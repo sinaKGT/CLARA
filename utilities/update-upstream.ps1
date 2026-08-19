@@ -54,7 +54,8 @@ Assert-Installed
 $pin        = Get-UpstreamPin
 $backupFile = Join-Path $ConfigDir '.upstream-previous.json'
 
-if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+$GitExe = (Get-Command git -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1).Source
+if (-not $GitExe) {
     Write-Bad 'git is required to change the upstream version.'
     Write-Info 'Install it from https://git-scm.com/downloads, or re-run the installer to fetch a fresh source archive.'
     exit 1
@@ -65,7 +66,30 @@ if (-not (Test-Path (Join-Path $RepoDir '.git'))) {
     exit 1
 }
 
-function Git { param([Parameter(ValueFromRemainingArguments)]$a) & git -C $RepoDir @a }
+# Named RepoGit, not Git: PowerShell is case-insensitive, so a function
+# called Git would shadow git.exe and recurse into itself forever.
+#
+# git writes progress and "fatal:" lines to stderr, and with
+# $ErrorActionPreference = 'Stop' PowerShell turns the first stderr line into a
+# terminating NativeCommandError - so a harmless "No names found" from
+# git describe kills the script. Same treatment as Invoke-Native in env.ps1:
+# relax the preference for the duration of the call and drop stderr, so only
+# real output comes back and failures are judged on $LASTEXITCODE.
+function RepoGit {
+    param([Parameter(ValueFromRemainingArguments)]$a)
+    $prevPref   = $ErrorActionPreference
+    $prevNative = $null
+    if (Get-Variable -Name PSNativeCommandUseErrorActionPreference -Scope Global -ErrorAction SilentlyContinue) {
+        $prevNative = $global:PSNativeCommandUseErrorActionPreference
+        $global:PSNativeCommandUseErrorActionPreference = $false
+    }
+    $ErrorActionPreference = 'Continue'
+    try { & $GitExe -C $RepoDir @a 2>$null }
+    finally {
+        $ErrorActionPreference = $prevPref
+        if ($null -ne $prevNative) { $global:PSNativeCommandUseErrorActionPreference = $prevNative }
+    }
+}
 
 function Install-Deps {
     Write-Step 'Reinstalling dependencies'
@@ -87,23 +111,15 @@ function Install-Deps {
 }
 
 # ---------------------------------------------------------------- current
-$currentCommit = (Git rev-parse HEAD 2>$null)
-$currentDesc   = (Git describe --tags 2>$null)
-if (-not $currentDesc) { $currentDesc = $currentCommit }
-
-Write-Host ''
-Write-Host '  speech-to-speech version' -ForegroundColor White
-Write-Host '  ------------------------' -ForegroundColor DarkGray
-Write-Info "pinned in configs\upstream.json : $($pin.ref)"
-Write-Info "actually checked out            : $currentDesc"
+$currentCommit = (RepoGit rev-parse HEAD)
 
 # ---------------------------------------------------------------- rollback
 if ($Rollback) {
     if (-not (Test-Path $backupFile)) { Write-Bad 'nothing to roll back to - this script has not changed anything yet.'; exit 1 }
     $prev = Get-Content $backupFile -Raw | ConvertFrom-Json
     Write-Step "Rolling back to $($prev.desc)"
-    Git fetch --depth 1 origin $prev.commit 2>&1 | Out-Null
-    Git checkout --force $prev.commit 2>&1 | Out-Null
+    RepoGit fetch origin $prev.commit | Out-Null
+    RepoGit checkout --force $prev.commit | Out-Null
     if ($LASTEXITCODE -ne 0) { Write-Bad 'checkout failed.'; exit 1 }
     Install-Deps
     Write-Ok "back at $($prev.desc)"
@@ -112,17 +128,43 @@ if ($Rollback) {
 
 # ---------------------------------------------------------------- releases
 Write-Step 'Fetching upstream releases'
-Git fetch --tags --force origin 2>&1 | Out-Null
-$tags = @(Git tag --sort=version:refname 2>$null) | Where-Object { $_ -match '^v\d' }
-if (-not $tags) { Write-Bad 'no release tags found upstream.'; exit 1 }
+
+# install.ps1 clones --depth 1, which arrives with no tags and no ancestry.
+# Both "git describe" and the A..B commit preview need real history, so the
+# first run here deepens the checkout. Upstream is ~5 MB and about a second,
+# which is far cheaper than showing the wrong version.
+if (Test-Path (Join-Path $RepoDir '.git\shallow')) {
+    Write-Info 'deepening the checkout (one-off, ~5 MB) so version comparison works'
+    RepoGit fetch --unshallow --tags --force origin | Out-Null
+} else {
+    RepoGit fetch --tags --force origin | Out-Null
+}
+$tags = @(RepoGit tag --sort=version:refname) | Where-Object { $_ -match '^v\d' }
+if (-not $tags) { Write-Bad 'no release tags found upstream - check your connection.'; exit 1 }
 $latest = $tags[-1]
+
+# git describe needs tags to exist locally, and install.ps1 clones --depth 1
+# with none of them - so this has to come after the fetch above, not before.
+$currentDesc = (RepoGit describe --tags)
+if (-not $currentDesc) {
+    $currentDesc = if ($currentCommit) { $currentCommit.Substring(0, [Math]::Min(12, $currentCommit.Length)) } else { 'unknown' }
+}
+# "v0.2.12-23-gdef4ad4" -> "v0.2.12". Compared exactly, because a -like
+# "v0.2.1*" test would also match v0.2.12.
+$currentTag = ($currentDesc -split '-')[0]
+
+Write-Host ''
+Write-Host '  speech-to-speech version' -ForegroundColor White
+Write-Host '  ------------------------' -ForegroundColor DarkGray
+Write-Info "pinned in configs\upstream.json : $($pin.ref)"
+Write-Info "actually checked out            : $currentDesc"
 
 Write-Host ''
 Write-Host '   available releases' -ForegroundColor White
 foreach ($t in ($tags | Select-Object -Last 8)) {
-    $date = (Git log -1 --format=%ad --date=short $t 2>$null)
+    $date = (RepoGit log -1 --format=%ad --date=short $t)
     $mark = ''
-    if ($currentDesc -like "$t*") { $mark = '  <- you are here' }
+    if ($t -eq $currentTag)       { $mark = '  <- you are here' }
     elseif ($t -eq $latest)       { $mark = '  <- newest' }
     Write-Host ("   {0,-10} {1}{2}" -f $t, $date, $mark) -ForegroundColor $(if ($mark) { 'Cyan' } else { 'Gray' })
 }
@@ -142,10 +184,15 @@ if (-not $Ref) {
 if ($tags -notcontains $Ref) { Write-Bad "$Ref is not a release tag. Use -List to see the options."; exit 1 }
 
 # ---------------------------------------------------------------- preview
-$ahead = @(Git log --oneline "$currentCommit..$Ref" 2>$null)
-if ($ahead.Count -eq 0) {
-    Write-Ok "already at $Ref - nothing to do."
+$ahead  = @(RepoGit log --oneline "$currentCommit..$Ref")   # gained by moving
+$behind = @(RepoGit log --oneline "$Ref..$currentCommit")   # lost by moving
+if ($ahead.Count -eq 0 -and $behind.Count -eq 0) {
+    Write-Ok "already exactly at $Ref - nothing to do."
     exit 0
+}
+if ($ahead.Count -eq 0) {
+    Write-Warn2 "$Ref is OLDER than what you have - moving there gives up $($behind.Count) commits."
+    Write-Info "you are at $currentDesc"
 }
 Write-Step "$($ahead.Count) commits between here and $Ref"
 $ahead | Select-Object -First 12 | ForEach-Object { Write-Info $_ }
@@ -175,8 +222,8 @@ Write-Ok "current version saved - .\utilities\update-upstream.ps1 -Rollback undo
 
 # ---------------------------------------------------------------- do it
 Write-Step "Checking out $Ref"
-Git fetch --depth 1 origin "refs/tags/${Ref}:refs/tags/${Ref}" 2>&1 | Out-Null
-Git checkout --force $Ref 2>&1 | Out-Null
+RepoGit fetch --tags --force origin | Out-Null
+RepoGit checkout --force $Ref | Out-Null
 if ($LASTEXITCODE -ne 0) { Write-Bad "checkout of $Ref failed."; exit 1 }
 Write-Ok "repo\ is now at $Ref"
 

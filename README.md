@@ -90,7 +90,7 @@ powershell -ExecutionPolicy Bypass -File .\utilities\install-all.ps1 -Agents
 Everything runs from **`CLARA.cmd`**:
 
 ```
-1 start    2 stop    3 check    4 open n8n    5 repair    6 logs    q quit
+1 start   2 stop   3 check   4 open n8n   5 repair   6 logs   7 version   q quit
 ```
 
 | | | |
@@ -101,6 +101,36 @@ Everything runs from **`CLARA.cmd`**:
 | 4️⃣ | **open n8n** | Opens the n8n editor |
 | 5️⃣ | **repair** | Reinstall any part. Safe to re-run. |
 | 6️⃣ | **logs** | Recent log files |
+| 7️⃣ | **version** | `1` show · `2` update the speech pipeline · `3` undo |
+
+---
+
+## 🔄 Updating the speech pipeline
+
+CLARA pins a **tagged release** of [speech-to-speech](https://github.com/huggingface/speech-to-speech), recorded in [`configs/upstream.json`](configs/upstream.json). Everyone who installs gets the same code you tested.
+
+> 🎯 **Currently pinned: `v0.2.12`**
+
+`CLARA.cmd` → **`7`** → **`2`** to move to a newer release. It shows what changed, flags commits that look like breaking changes, checks out the tag, reinstalls dependencies, verifies CUDA survived, and runs the health check. If it goes wrong, **`7`** → **`3`** puts it back.
+
+```powershell
+.\utilities\update-upstream.ps1 -List          # what's available
+.\utilities\update-upstream.ps1 -Ref v0.2.13   # move to a specific one
+.\utilities\update-upstream.ps1 -Rollback      # undo
+```
+
+<details>
+<summary>❓ Why pin instead of tracking the latest?</summary>
+
+Upstream takes roughly **55 commits a week** on `main` and cuts a release about monthly. `main` is a research branch with no stability contract and no Windows CI.
+
+CLARA exists *because* upstream breaks on Windows — the collapsed section further down lists five separate workarounds, and a CLI change has already broken it once before. Tracking `main` means every install is a different, untested pipeline, and a bug report from someone else can't be reproduced.
+
+Tagged releases are something a human decided to ship. Update on your schedule, verify it works, then commit the new pin so everyone moves together.
+
+⚠️ One thing to watch: reinstalling dependencies can silently pull the **CPU-only** torch wheel over your CUDA build. The update script checks for this and tells you to run `.\utilities\install.ps1 -CudaOnly` if it happens.
+
+</details>
 
 ---
 

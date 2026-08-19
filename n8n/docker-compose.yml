@@ -1,0 +1,82 @@
+# n8n + Ollama + Postgres for the voice agents.
+#
+# PORTABILITY IS THE POINT: every path below is a relative bind mount, never a
+# named Docker volume. Named volumes live inside Docker's own storage and would
+# be left behind if you moved this folder. With bind mounts, workflows,
+# credentials, agent memory and downloaded models all sit under
+# D:\local_agent\n8n\ and travel with it.
+#
+# Everything is prefixed "clara-" so container names cannot collide, and every
+# HOST port is off the upstream default so anything already on the machine keeps
+# working untouched:
+#
+#     n8n       5679  (default 5678)
+#     Postgres  5433  (default 5432)
+#
+# Ollama is NOT here - it runs as the Windows desktop app. Workflows reach it at
+# http://host.docker.internal:11434, which needs OLLAMA_HOST=0.0.0.0 set on the
+# desktop app, or it only listens on 127.0.0.1 and containers cannot see it.
+name: clara-agents
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: clara-postgres
+    restart: unless-stopped
+    ports:
+      - "${PG_PORT:-5433}:5432"
+    environment:
+      - POSTGRES_USER=clara
+      - POSTGRES_PASSWORD=clara
+      - POSTGRES_DB=agents
+      # PGDATA must be a SUBDIRECTORY of the mount, not the mount itself.
+      # Postgres refuses to initialise into a directory it does not own, and a
+      # Windows bind mount never has the right ownership. Pointing it one level
+      # deeper lets Postgres create and own that directory itself.
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    volumes:
+      - ./postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U clara -d agents"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 10s
+    networks: [claranet]
+
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:next
+    container_name: clara-n8n
+    restart: unless-stopped
+    ports:
+      - "${N8N_PORT:-5679}:5678"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - N8N_USER_FOLDER=/home/node/.n8n
+      # n8n keeps its own workflows and credentials in SQLite here - small,
+      # single user, and it means n8n still starts even if Postgres is down.
+      # Postgres is for AGENT memory, which is the part that must be durable.
+      - DB_TYPE=sqlite
+      - N8N_RUNNERS_ENABLED=true
+      - N8N_DIAGNOSTICS_ENABLED=false
+      - N8N_VERSION_NOTIFICATIONS_ENABLED=false
+      - N8N_HOST=127.0.0.1
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - WEBHOOK_URL=http://127.0.0.1:${N8N_PORT:-5679}/
+      - GENERIC_TIMEZONE=UTC
+      - N8N_COMMUNITY_PACKAGES_ENABLED=true
+      - N8N_DEFAULT_BINARY_DATA_MODE=filesystem
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY:-clara-local-key-change-me}
+    volumes:
+      - ./data:/home/node/.n8n      # workflows, credentials, n8n's own database
+      - ./files:/data/files         # anything a workflow reads or writes
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks: [claranet]
+
+networks:
+  claranet:
+    name: clara-agents-net

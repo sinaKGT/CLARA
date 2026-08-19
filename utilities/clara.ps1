@@ -38,7 +38,7 @@ while ($true) {
     $null = Row 'ollama'   11434 '(desktop app)'
     $null = Row 'postgres' (Get-ContainerPort -Container 'clara-postgres' -InternalPort 5432  -Fallback 5433)  ''
     Write-Host ''
-    Write-Host '   1 start    2 stop    3 check    4 open n8n    5 repair    6 logs    q quit' -ForegroundColor Gray
+    Write-Host '   1 start   2 stop   3 check   4 open n8n   5 repair   6 logs   7 version   q quit' -ForegroundColor Gray
     Write-Host ''
     switch (Read-Host '  ') {
         '1' { Run 'start-ui.ps1' @('-Force','-Detach'); Pause2 }
@@ -75,6 +75,16 @@ while ($true) {
                     ForEach-Object { Write-Host ('   {0,-24} {1,7:N0} KB  {2}' -f $_.Name, ($_.Length/1KB), $_.LastWriteTime.ToString('HH:mm')) -ForegroundColor Gray }
                 Start-Process explorer $LogsDir
             } else { Write-Info 'no logs yet' }
+            Pause2
+        }
+        '7' {
+            Write-Host ''
+            Write-Host '   1 show version    2 update to a release    3 undo last update' -ForegroundColor Gray
+            switch (Read-Host '  ') {
+                '1' { Run 'update-upstream.ps1' @('-List') }
+                '2' { Run 'update-upstream.ps1' }
+                '3' { Run 'update-upstream.ps1' @('-Rollback') }
+            }
             Pause2
         }
         'q' { break }

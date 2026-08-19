@@ -179,6 +179,26 @@ function Get-GpuInfo {
     return $info
 }
 
+$UpstreamFile = Join-Path $ConfigDir 'upstream.json'
+
+# Which upstream speech-to-speech release this kit is pinned to. Read by
+# install.ps1 (what to clone) and update-upstream.ps1 (what to move from).
+# Falls back to a known-good tag if the file is missing or malformed, so a
+# damaged configs\upstream.json can never make the installer track main.
+function Get-UpstreamPin {
+    $fallback = [pscustomobject]@{
+        repo = 'https://github.com/huggingface/speech-to-speech.git'
+        ref  = 'v0.2.12'
+    }
+    if (-not (Test-Path $UpstreamFile)) { return $fallback }
+    try {
+        $j = Get-Content $UpstreamFile -Raw | ConvertFrom-Json
+        if (-not $j.ref)  { $j | Add-Member -NotePropertyName ref  -NotePropertyValue $fallback.ref  -Force }
+        if (-not $j.repo) { $j | Add-Member -NotePropertyName repo -NotePropertyValue $fallback.repo -Force }
+        return $j
+    } catch { return $fallback }
+}
+
 function Get-KitState {
     # Tolerates a missing, empty or half-written system.json (interrupted install)
     # rather than throwing an opaque JSON error at the caller.

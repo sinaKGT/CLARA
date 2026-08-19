@@ -1,0 +1,7 @@
+{
+  "_comment": "Which speech-to-speech release CLARA is built and tested against. install.ps1 clones exactly this ref, so every install is identical. Upstream main takes ~55 commits a week and is not stability-tested on Windows - always pin to a tag. Change it with utilities\\update-upstream.ps1, never by hand.",
+  "repo": "https://github.com/huggingface/speech-to-speech.git",
+  "ref": "v0.2.12",
+  "pinnedAt": "2026-08-19",
+  "notes": "Tested on Windows 11 + RTX 5080 Laptop, cu130. Parakeet TDT + Qwen3-TTS, smart turn on."
+}

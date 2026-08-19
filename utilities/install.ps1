@@ -303,23 +303,28 @@ if ($LASTEXITCODE -ne 0) { Write-Bad 'uv python install failed.'; exit 1 }
 Write-Ok "CPython $PythonVersion under tools\python (your system Python is untouched)"
 
 # ------------------------------------------------------------------ source
-Write-Step 'Fetching the speech-to-speech source'
+$pin          = Get-UpstreamPin
+$UpstreamRef  = $pin.ref
+$UpstreamRepo = $pin.repo
+Write-Step "Fetching the speech-to-speech source ($UpstreamRef)"
 if (Test-Path (Join-Path $RepoDir 'pyproject.toml')) {
     Write-Ok 'source already present in repo\'
 } else {
     $git = Get-Command git -ErrorAction SilentlyContinue
     if ($git) {
-        & git clone --depth 1 https://github.com/huggingface/speech-to-speech.git $RepoDir
-        if ($LASTEXITCODE -ne 0) { Write-Bad 'git clone failed.'; exit 1 }
-        Write-Ok 'cloned with git (run  git -C repo pull  later to update)'
+        & git clone --depth 1 --branch $UpstreamRef $UpstreamRepo $RepoDir
+        if ($LASTEXITCODE -ne 0) { Write-Bad "git clone of $UpstreamRef failed."; exit 1 }
+        Write-Ok "cloned at $UpstreamRef  (change it with .\utilities\update-upstream.ps1)"
     } else {
         Write-Info 'git not found - downloading the source archive instead'
         $srcZip = Join-Path $TempDir 's2s-src.zip'
-        Invoke-WebRequest -Uri 'https://codeload.github.com/huggingface/speech-to-speech/zip/refs/heads/main' -OutFile $srcZip -UseBasicParsing
+        Invoke-WebRequest -Uri "https://codeload.github.com/huggingface/speech-to-speech/zip/refs/tags/$UpstreamRef" -OutFile $srcZip -UseBasicParsing
         $tmpDir = Join-Path $TempDir 's2s-src'
         if (Test-Path $tmpDir) { Remove-Item $tmpDir -Recurse -Force }
         Expand-Archive -Path $srcZip -DestinationPath $tmpDir -Force
-        Move-Item (Join-Path $tmpDir 'speech-to-speech-main') $RepoDir
+        # GitHub names the folder after the tag without its leading v
+        $extracted = Get-ChildItem $tmpDir -Directory | Select-Object -First 1
+        Move-Item $extracted.FullName $RepoDir
         Remove-Item $srcZip, $tmpDir -Recurse -Force -ErrorAction SilentlyContinue
         Write-Ok 'source archive extracted to repo\'
     }

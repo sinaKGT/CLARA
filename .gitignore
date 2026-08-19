@@ -19,12 +19,23 @@
 !/LICENSE
 !/CLARA.cmd
 !/README.md
-!/HOW-TO.txt
-!/TROUBLESHOOTING.md
 !/architecture/
 !/configs/
 !/ui/
 !/utilities/
+
+
+# ─── n8n: one source file, everything else private ─────────────
+# docker-compose.yml IS source - install-n8n.ps1 exits with
+# "missing ...docker-compose.yml" without it, and never generates
+# one. It holds no secrets: the encryption key is interpolated
+# from n8n\.env at runtime, and .env stays ignored below.
+#
+# Everything else under n8n\ is private runtime data - workflows,
+# credentials, the Postgres volume, agent memory.
+!/n8n/
+/n8n/*
+!/n8n/docker-compose.yml
 
 
 # ─── Junk inside those allowed folders ─────────────────────────
@@ -47,7 +58,8 @@ desktop.ini
 # ═══════════════════════════════════════════════════════════════
 
 # n8n — workflows, credentials, Postgres volume, Ollama blobs
-n8n/
+# (no bare "n8n/" here: it would override the docker-compose.yml
+#  exception above. /n8n/* already covers the directory.)
 .n8n/
 n8n-data/
 workflows/
@@ -83,3 +95,7 @@ venv/
 
 # Machine-specific state written by the installer
 system.json
+
+# Rollback state written by update-upstream.ps1 - records the commit this
+# machine came from, which is meaningless on anyone else's.
+/configs/.upstream-previous.json

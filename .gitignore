@@ -1,0 +1,85 @@
+# ═══════════════════════════════════════════════════════════════
+#  CLARA — deny by default, allow only source.
+#
+#  This folder is ~90,000 files: model weights, a vendored Python,
+#  llama.cpp binaries, Docker volumes and n8n data. Almost none of
+#  it belongs on GitHub, and some of it is private.
+#
+#  So: ignore everything at the root, then re-admit the handful of
+#  directories that are actually source. Anything new you drop in
+#  the root is ignored until you deliberately allow it here.
+# ═══════════════════════════════════════════════════════════════
+
+/*
+
+
+# ─── Source: the only things that get committed ────────────────
+!/.gitignore
+!/.gitattributes
+!/LICENSE
+!/CLARA.cmd
+!/README.md
+!/HOW-TO.txt
+!/TROUBLESHOOTING.md
+!/architecture/
+!/configs/
+!/ui/
+!/utilities/
+
+
+# ─── Junk inside those allowed folders ─────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+*.log
+*.tmp
+.DS_Store
+Thumbs.db
+desktop.ini
+
+
+# ═══════════════════════════════════════════════════════════════
+#  Belt and braces.
+#
+#  Everything below is already excluded by the /* rule above.
+#  It is repeated explicitly so that if anyone ever loosens the
+#  allow-list, the private things stay private anyway.
+# ═══════════════════════════════════════════════════════════════
+
+# n8n — workflows, credentials, Postgres volume, Ollama blobs
+n8n/
+.n8n/
+n8n-data/
+workflows/
+*[Ww][Oo][Rr][Kk][Ff][Ll][Oo][Ww]*.json
+*[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll]*.json
+*.sqlite
+*.sqlite3
+pgdata/
+
+# Secrets
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*_token*
+*apikey*
+*api_key*
+
+# Weights, vendored runtimes, upstream checkout, logs
+models/
+tools/
+repo/
+logs/
+.venv/
+venv/
+*.gguf
+*.safetensors
+*.onnx
+*.bin
+*.pt
+*.pth
+
+# Machine-specific state written by the installer
+system.json

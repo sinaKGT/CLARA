@@ -1,0 +1,1548 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Voice agent</title>
+<style>
+  :root{--c1:150,165,200;--c2:120,140,190;--u1:120,140,190;--u2:150,165,200}
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden;background:#04050a}
+  body{font:15px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    color:#e9edf7;user-select:none;-webkit-user-select:none}
+  canvas{position:fixed;inset:0;width:100%;height:100%;display:block;z-index:0}
+
+  /* left: sessions */
+  .rail{position:fixed;left:0;top:0;bottom:0;width:56px;z-index:4;display:flex;flex-direction:column;
+    align-items:center;padding:14px 0;gap:8px;overflow-y:auto;overflow-x:hidden;
+    background:rgba(255,255,255,.02);backdrop-filter:blur(18px);
+    border-right:1px solid rgba(255,255,255,.05);
+    transform:translateX(-100%);transition:transform .3s cubic-bezier(.16,1,.3,1);opacity:0}
+  .rail.open{transform:none;opacity:1}
+  .rail::-webkit-scrollbar{width:0}
+  /* the one thing always on screen: hover it to bring the rail out */
+  .tab{position:fixed;left:0;top:0;bottom:0;width:26px;z-index:3;cursor:pointer}
+  .tab::after{content:'';position:absolute;left:9px;top:50%;width:4px;height:44px;margin-top:-22px;
+    border-radius:3px;background:rgba(var(--c1),.5);transition:.25s}
+  .tab:hover::after{background:rgba(var(--c1),.95);height:60px;margin-top:-30px}
+  .sdot{width:34px;height:34px;border-radius:11px;cursor:pointer;flex:0 0 auto;position:relative;
+    display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#05070d;
+    transition:transform .2s cubic-bezier(.34,1.5,.64,1),box-shadow .2s;opacity:.5}
+  .sdot:hover{transform:scale(1.1);opacity:.85}
+  .sdot.on{opacity:1;box-shadow:0 0 0 2px rgba(255,255,255,.85)}
+  .addb{width:34px;height:34px;border-radius:11px;border:1px dashed rgba(255,255,255,.2);background:none;
+    color:rgba(255,255,255,.35);font-size:18px;cursor:pointer;flex:0 0 auto;transition:.2s}
+  .addb:hover{border-color:rgba(var(--c1),.8);color:rgb(var(--c1))}
+  .railsp{flex:1}
+  .tool{width:34px;height:30px;border-radius:9px;border:none;background:none;cursor:pointer;
+    color:rgba(255,255,255,.28);font-size:14px;transition:.2s}
+  .tool:hover{color:rgba(255,255,255,.8);background:rgba(255,255,255,.06)}
+
+  /* centre */
+  .ui{position:fixed;left:0;right:0;bottom:16px;z-index:3;text-align:center;pointer-events:none}
+  .name{font-size:12px;letter-spacing:.44em;text-transform:uppercase;font-weight:500;
+    color:rgba(255,255,255,.8)}
+  .state{margin-top:6px;font-size:9.5px;letter-spacing:.26em;text-transform:uppercase;
+    color:rgba(255,255,255,.26);height:12px;transition:color .6s}
+  .hint{margin-top:5px;font-size:11px;color:rgba(255,255,255,.18);height:14px;transition:opacity .6s}
+
+  /* bottom: conversation */
+
+  @keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+  .veil{position:fixed;inset:0;background:rgba(3,4,8,.82);backdrop-filter:blur(8px);z-index:60;
+    display:none;align-items:center;justify-content:center;padding:20px}
+  .veil.show{display:flex}
+  .modal{width:min(500px,100%);max-height:92vh;overflow-y:auto;background:rgba(12,16,26,.985);
+    border:1px solid rgba(255,255,255,.12);border-radius:22px;padding:26px;animation:rise .25s}
+  .modal::-webkit-scrollbar{width:0}
+  .modal textarea{width:100%;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);
+    border-radius:12px;padding:11px 13px;font:inherit;font-size:13.5px;line-height:1.6;color:#e9edf7;
+    outline:none;min-height:118px;resize:vertical}
+  .modal textarea:focus{border-color:rgba(var(--c1),.7)}
+  .modal select{width:100%;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);
+    border-radius:11px;padding:10px 12px;font-size:14px;color:#e9edf7;outline:none}
+  /* The dropdown list is drawn by the OS on a white background, so options
+     inherited the light text of the closed control and vanished. Set both
+     colours explicitly - inheritance does not reach the native popup. */
+  .modal select option{background:#ffffff;color:#111827}
+  .modal select optgroup{background:#ffffff;color:#4b5563;font-style:normal;font-weight:600}
+  .two{display:flex;gap:22px}.two>div{flex:1}
+  .modal h2{font-size:15px;font-weight:600;margin-bottom:16px}
+  .modal label{display:block;font-size:10px;letter-spacing:.15em;text-transform:uppercase;
+    color:rgba(255,255,255,.35);margin:14px 0 7px;font-weight:600}
+  .modal input{width:100%;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);
+    border-radius:11px;padding:10px 12px;font-size:14px;color:#e9edf7;outline:none}
+  .modal input:focus{border-color:rgba(var(--c1),.7)}
+  .sw{display:flex;gap:9px;flex-wrap:wrap}
+  .sw div{width:32px;height:32px;border-radius:11px;cursor:pointer;border:2px solid transparent;transition:.15s}
+  .sw div:hover{transform:scale(1.12)}
+  .sw div.sel{border-color:#fff}
+  .foot{display:flex;gap:9px;margin-top:22px}
+  .foot .sp{flex:1}
+  .btn{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:10px;
+    padding:8px 14px;font-size:13px;color:#e9edf7;cursor:pointer;transition:.18s}
+  .btn:hover{background:rgba(255,255,255,.12)}
+  .btn.p{background:linear-gradient(135deg,rgb(var(--c1)),rgb(var(--c2)));color:#05070d;
+    border-color:transparent;font-weight:600}
+  .btn.d{border-color:rgba(248,113,113,.4);color:#fca5a5}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div class="tab" id="tab" title="Conversations"></div>
+<div class="rail" id="rail"></div>
+
+<div class="ui">
+  <div class="name" id="name"></div>
+  <div class="state" id="state"></div>
+  <div class="hint" id="hint"></div>
+</div>
+
+
+<div id="empty" style="position:fixed;inset:0;z-index:5;display:none;align-items:center;
+  justify-content:center;pointer-events:none">
+  <div style="text-align:center;pointer-events:auto">
+    <div style="font-size:13px;letter-spacing:.4em;text-transform:uppercase;color:rgba(255,255,255,.75)">no agents yet</div>
+    <div style="margin-top:10px;font-size:13px;color:rgba(255,255,255,.35);max-width:300px;line-height:1.6">
+      Each agent is an n8n workflow. Build one, activate it, then connect it here.</div>
+    <button class="btn p" id="firstadd" style="margin-top:18px;padding:10px 22px">Connect to n8n</button>
+  </div>
+</div>
+
+<div class="veil" id="veil"><div class="modal">
+  <h2 id="mtitle">New conversation</h2>
+
+  <label>Name</label>
+  <input id="f-name" maxlength="28" placeholder="What should this agent be called?">
+
+  <label>Personality</label>
+  <textarea id="f-prompt" placeholder="How should they think and talk?"></textarea>
+
+  <label>n8n webhook url</label>
+  <input id="f-hook" placeholder="http://127.0.0.1:5679/webhook/my-agent" spellcheck="false">
+  <div style="display:flex;gap:10px;align-items:center;margin-top:9px">
+    <button class="btn" id="f-test" type="button">Test</button>
+    <span id="f-teststate" style="font-size:12.5px;color:rgba(255,255,255,.45);flex:1"></span>
+  </div>
+
+  <label>Voice</label>
+  <select id="f-voice">
+    <optgroup label="Male — native English">
+      <option value="Aiden">Aiden — American, clear</option>
+      <option value="Ryan">Ryan — English, dynamic</option>
+    </optgroup>
+    <optgroup label="Female">
+      <option value="Sohee">Sohee — Korean, warm</option>
+      <option value="Serena">Serena — Chinese, gentle</option>
+      <option value="Vivian">Vivian — Chinese, bright</option>
+      <option value="Ono_Anna">Ono_Anna — Japanese, light</option>
+    </optgroup>
+    <optgroup label="Male — other">
+      <option value="Uncle_Fu">Uncle_Fu — Chinese, low</option>
+      <option value="Dylan">Dylan — Beijing</option>
+      <option value="Eric">Eric — Sichuan</option>
+    </optgroup>
+  </select>
+
+  <label>Animation</label>
+  <select id="f-vis"></select>
+
+  <label>Colour mode</label>
+  <select id="f-mode"></select>
+
+  <div class="two">
+    <div><label>Your colour</label><div class="sw" id="f-swu"></div></div>
+    <div><label>Their colour</label><div class="sw" id="f-swa"></div></div>
+  </div>
+
+  <div class="foot">
+    <button class="btn d" id="f-del">Delete</button>
+    <button class="btn" id="f-wipe" title="Erase this agent's stored conversation in Postgres">Clear memory</button>
+    <div class="sp"></div>
+    <button class="btn" id="f-cancel">Cancel</button>
+    <button class="btn p" id="f-save">Start</button>
+  </div>
+</div></div>
+
+<script type="module">
+const WS_URL=`ws://${location.hostname||'127.0.0.1'}:8765/v1/realtime`;
+const RATE=16000, CHUNK_MS=40, STORE='clara-agents-v2';
+try{ localStorage.removeItem('clara-sessions-v1'); localStorage.removeItem('clara-sanitised-v2'); }catch{}
+
+const VOICE='Sohee';
+// Left at 1.0 deliberately. Web Audio cannot time-stretch, so any value other
+// than 1 drags the pitch with it - above 1 she sounds childlike, below 1 she
+// sounds slurred. Qwen3-TTS has no speed setting of its own, so there is no
+// clean way to change pace here. Do not "improve" this.
+const SPEED=1.0;
+const VOLUME=2.4;
+
+const PALETTE=[
+  // Pairs, not single colours: the first lights the near face, the second the
+  // far. Each pair is analogous or a close neighbour - complementary pairs read
+  // as two objects rather than one lit one.
+  [[124,150,255],[168,130,255]],  // indigo    -> violet
+  [[ 86,200,255],[ 80,150,240]],  // sky       -> azure
+  [[ 80,220,180],[ 70,180,230]],  // teal      -> cyan
+  [[120,255,220],[ 90,190,255]],  // aqua      -> ice
+  [[160,240,150],[ 90,200,170]],  // lime      -> jade
+  [[140,230,120],[220,240,130]],  // leaf      -> chartreuse
+  [[240,200,110],[240,150, 90]],  // gold      -> amber
+  [[255,215,150],[235,140,110]],  // cream     -> clay
+  [[255,160,110],[245,110,120]],  // apricot   -> coral
+  [[255,120, 90],[255,190,120]],  // ember     -> sand
+  [[255,100,150],[255,170,110]],  // cerise    -> peach
+  [[255,140,200],[190,120,255]],  // rose      -> orchid
+  [[230,120,130],[200, 90,190]],  // rouge     -> magenta
+  [[190,140,255],[120,110,240]],  // lilac     -> periwinkle
+  [[100,180,255],[150,230,255]],  // cobalt    -> mist
+  [[200,200,215],[150,165,200]],  // pearl     -> slate
+];
+
+// Appended to every personality: these are channel rules, not character, and
+// markdown in particular is read aloud as gibberish.
+const VOICE_RULES =
+" CRITICAL: you are speaking out loud. Never use markdown, asterisks, bullets, numbered lists or " +
+"headings. Plain spoken sentences only. Four or five sentences, ending on a question.";
+
+const PROMPT_OPEN =
+" This conversation has just started. Your first turn, and only this turn: introduce yourself in " +
+"one sentence, say what you are here to do, then ask the person their name. Nothing else until they answer.";
+
+const MIC_WORKLET=`
+class MicProc extends AudioWorkletProcessor{
+  constructor(){super();this.target=${RATE};this.chunk=Math.round(this.target*${CHUNK_MS}/1000);
+    this.ratio=sampleRate/this.target;this.acc=[];this.pos=0;this.on=true;
+    this.port.onmessage=e=>{if(e.data&&e.data.kind==='enable')this.on=!!e.data.value;};}
+  process(inputs){
+    const ch=inputs[0]&&inputs[0][0];if(!ch)return true;
+    for(let i=0;i<ch.length;i++)this.acc.push(ch[i]);
+    while((this.acc.length-this.pos)>this.ratio*this.chunk+2){
+      const out=new Int16Array(this.chunk);let sum=0;
+      for(let i=0;i<this.chunk;i++){
+        const idx=this.pos+i*this.ratio,i0=Math.floor(idx),fr=idx-i0;
+        const nx=this.acc[i0+1]!==undefined?this.acc[i0+1]:this.acc[i0];
+        const c=Math.max(-1,Math.min(1,this.acc[i0]*(1-fr)+nx*fr));
+        out[i]=c<0?c*0x8000:c*0x7fff;sum+=c*c;}
+      this.pos+=this.ratio*this.chunk;
+      this.port.postMessage({pcm:out.buffer,rms:Math.sqrt(sum/this.chunk)},[out.buffer]);
+      const d=Math.floor(this.pos);if(d>0){this.acc.splice(0,d);this.pos-=d;}}
+    if(this.acc.length>96000)this.acc.splice(0,this.acc.length-48000);
+    return true;}}
+registerProcessor('mic-proc',MicProc);`;
+
+// The model occasionally slips into markdown despite the prompt; never show it.
+const clean=t=>String(t||'')
+  .replace(/\*\*(.+?)\*\*/g,'$1').replace(/\*(.+?)\*/g,'$1')
+  .replace(/^#{1,6}\s*/gm,'').replace(/^\s*[-*+]\s+/gm,'')
+  .replace(/`{1,3}/g,'').replace(/\n{2,}/g,'\n').trim();
+
+const el=id=>document.getElementById(id);
+const U={name:el('name'),state:el('state'),hint:el('hint'),rail:el('rail'),veil:el('veil')};
+
+let sessions=[],curId=null,editId=null,editColor={a:0,u:1},testOk=false;
+let ws=null,ctx=null,micNode=null,micStream=null,outGain=null,muteSink=null;
+let micAn=null,micF=null,aiAn=null,aiF=null;
+let connected=false,configured=false,muted=false,busy=false;
+let phase='idle',playHead=0,live=[],slotRetry=0;
+
+/* ------------------------------------------------------------- sessions */
+const nowTitle=()=>new Date().toLocaleDateString(undefined,{month:'short',day:'numeric'})
+  +' '+new Date().toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'});
+// The persona minus the name. The name is spliced in per agent, so an agent
+// you called Bob is actually told it is Bob - previously every agent got a
+// prompt beginning "You are Clara" no matter what the panel said, and would
+// introduce itself as Clara.
+const PERSONA=' You talk like a well-read, straight-talking person, not an assistant. Give the actual information first - concrete and accurate. Then say what you think of it and why, plainly, taking a side. Then ask one question that follows from what you just said. No flattery, no filler, no summarising back what I said.';
+const defPrompt=n=>'You are '+((n||'').trim()||'the assistant')+'.'+PERSONA;
+const DEFAULT_PROMPT=defPrompt('the assistant');
+
+// Sessions saved before agents were per-session are missing those fields.
+function migrate(){
+  let touched=false;
+  for(const s of sessions){
+    if(!s.agentName){s.agentName='Agent';touched=true;}
+    if(s.msgs){delete s.msgs;touched=true;}   // history is the workflow's job now
+    if(s.webhook===undefined){s.webhook='';touched=true;}
+    if(!s.prompt){s.prompt=defPrompt(s.agentName);touched=true;}
+    if(!s.mode){s.mode='warm';touched=true;}
+    if(!s.visual){s.visual='sphere';touched=true;}
+    if(!s.voice){s.voice='Sohee';touched=true;}
+    if(s.colorAgent===undefined){s.colorAgent=(s.color|0);touched=true;}
+    if(s.colorUser===undefined){s.colorUser=((s.color|0)+1)%PALETTE.length;touched=true;}
+  }
+  if(touched)saveSessions();
+}
+
+function loadSessions(){
+  try{const r=localStorage.getItem(STORE);if(r){const p=JSON.parse(r);
+    if(Array.isArray(p.sessions)&&p.sessions.length){
+      sessions=p.sessions;curId=p.cur&&sessions.some(s=>s.id===p.cur)?p.cur:sessions[0].id;return;}}}catch{}
+  // First run is deliberately empty: the empty-state card walks you into
+  // creating the first agent against a real n8n webhook.
+  sessions=[];curId=null;
+}
+function saveSessions(){try{localStorage.setItem(STORE,JSON.stringify({sessions,cur:curId}));}catch{}}
+const S=()=>sessions.find(s=>s.id===curId)||sessions[0];
+const pairA=s=>PALETTE[((s&&s.colorAgent)|0)%PALETTE.length]||PALETTE[0];
+const pairU=s=>PALETTE[((s&&s.colorUser)|0)%PALETTE.length]||PALETTE[1];
+const rgba=(c,a=1)=>`rgba(${c[0]},${c[1]},${c[2]},${a})`;
+
+/* The orb used to take its colour from a fixed table keyed only on phase, so
+   the colour picker changed the rail and the buttons and left the one thing
+   you actually look at untouched. Now the table is rebuilt from the agent's
+   palette whenever the session or its colours change. */
+const mixc=(p,q,k)=>[p[0]+(q[0]-p[0])*k, p[1]+(q[1]-p[1])*k, p[2]+(q[2]-p[2])*k];
+const lift=(c,k)=>[c[0]+(255-c[0])*k, c[1]+(255-c[1])*k, c[2]+(255-c[2])*k];
+// Palette entries are chosen to look good as flat UI swatches, which makes them
+// muted once they are scattered over a black field at low alpha. Every mode
+// pushes the channels away from their midpoint so the colour survives that
+// transfer; they differ in how far, what they bias toward, and overall gain.
+//   k    saturation. negative desaturates. clamped so it can never invert.
+//   tint colour the result is mixed toward, by mix
+//   gain final brightness multiplier
+const MODES={
+  warm:  {label:'Warm - amber cast, easy on the eyes', k:.40, tint:[255,168,98],  mix:.26, gain:1.14},
+  vivid: {label:'Vivid - saturated, high contrast',    k:.58, tint:null,          mix:0,   gain:1.22},
+  neon:  {label:'Neon - maximum saturation',           k:.95, tint:null,          mix:0,   gain:1.34},
+  soft:  {label:'Soft - pastel, low contrast',         k:.12, tint:[255,228,210], mix:.20, gain:1.06},
+  deep:  {label:'Deep - rich and dark, more depth',    k:.62, tint:[40,30,70],    mix:.16, gain:1.04},
+  mono:  {label:'Mono - near-white, colour drained',   k:-.50,tint:[226,234,248], mix:.42, gain:1.16},
+  // Living modes. Same tone curve, but the colour itself moves.
+  breathing:{label:'Breathing - hue drifts, ~50 s cycle', k:.46, tint:null, mix:0, gain:1.18, spin:7},
+  random:{label:'Random - a new pair every session',   k:.50, tint:null,          mix:0,   gain:1.20, rand:true},
+};
+const MODE_DEFAULT='warm';
+// Rotating hue in RGB directly turns colours grey as they pass through the
+// axis. This is the standard luminance-preserving rotation - the same matrix
+// CSS hue-rotate() uses - so saturation survives a full turn.
+function hueRot(c,deg){
+  const a=deg*Math.PI/180, C=Math.cos(a), S=Math.sin(a);
+  const m=[.213+C*.787-S*.213, .715-C*.715-S*.715, .072-C*.072+S*.928,
+           .213-C*.213+S*.143, .715+C*.285+S*.140, .072-C*.072-S*.283,
+           .213-C*.213-S*.787, .715-C*.715+S*.715, .072+C*.928+S*.072];
+  return [c[0]*m[0]+c[1]*m[1]+c[2]*m[2],
+          c[0]*m[3]+c[1]*m[4]+c[2]*m[5],
+          c[0]*m[6]+c[1]*m[7]+c[2]*m[8]].map(v=>Math.max(0,Math.min(255,v)));
+}
+const tone=(c,m)=>{
+  const mx=Math.max(c[0],c[1],c[2]), mn=Math.min(c[0],c[1],c[2]);
+  const mid=(mx+mn)/2;
+  const f=Math.max(0,1+m.k*1.7);
+  let o=c.map(v=>mid+(v-mid)*f+22);
+  if(m.tint)o=[0,1,2].map(i=>o[i]+(m.tint[i]-o[i])*m.mix);
+  return o.map(v=>Math.max(0,Math.min(255,v*m.gain)));
+};
+// [near colour, far colour] per phase.
+let HUES={idle:[[150,165,200],[120,140,190]],connecting:[[150,165,200],[120,140,190]],
+          listening:[[120,170,235],[90,140,220]],user:[[90,200,255],[70,160,240]],
+          thinking:[[178,150,255],[140,120,235]],ai:[[255,175,110],[240,120,130]]};
+// Re-rolled when the session opens or the mode is picked, never per frame -
+// a palette that changed 60 times a second is a strobe, not a colour.
+let randPair=null;
+function rollRandom(){
+  const i=Math.floor(Math.random()*PALETTE.length);
+  let j=Math.floor(Math.random()*PALETTE.length);
+  if(j===i)j=(j+1+Math.floor(Math.random()*(PALETTE.length-1)))%PALETTE.length;
+  randPair=[i,j];
+}
+let curSpin=0;          // degrees/second of hue drift, 0 for every static mode
+let curVis='sphere';   // literal, NOT VIS_DEFAULT: that const lives in the
+                       // visuals block far below, and paint() runs before it.
+function buildHues(){
+  const s=S(); if(!s)return;
+  const m=MODES[s.mode]||MODES[MODE_DEFAULT];
+  curSpin=m.spin||0;
+  curVis=s.visual||'sphere';   // frame() checks VIS[curVis] before dispatching
+  if(m.rand&&!randPair)rollRandom();
+  const [a0,b0]=m.rand?PALETTE[randPair[0]]:pairA(s);
+  const [u0,u1]=m.rand?PALETTE[randPair[1]]:pairU(s);
+  const a=tone(a0,m), b=tone(b0,m), u=tone(u0,m), u2=tone(u1,m);
+  HUES={
+    idle:       [mixc(a,b,.35), b],
+    connecting: [mixc(a,b,.35), b],
+    listening:  [a, b],
+    user:       [u, u2],                  // your colours, while you talk
+    thinking:   [b, mixc(b,a,.55)],       // her second colour leads - a real shift
+    ai:         [lift(a,.24), lift(b,.10)]// lit up while speaking
+  };
+}
+
+function paint(){
+  if(!sessions.length){refreshEmpty();return;}
+  const [a,b]=pairA(S()), [c,d]=pairU(S());
+  const R=document.documentElement.style;
+  R.setProperty('--c1',a.join(','));R.setProperty('--c2',b.join(','));
+  R.setProperty('--u1',c.join(','));R.setProperty('--u2',d.join(','));
+  const an=(S().agentName||'');
+  U.name.textContent=an.toUpperCase();
+  document.title=an||'Voice agent';
+  buildHues();
+  refreshEmpty();
+}
+function refreshEmpty(){
+  const none=sessions.length===0;
+  el('empty').style.display=none?'flex':'none';
+  U.name.textContent=none?'':(S().agentName||'').toUpperCase();
+}
+
+function drawRail(){
+  U.rail.innerHTML='';
+  sessions.forEach((s,i)=>{
+    const [a,b]=pairA(s);
+    const d=document.createElement('div');
+    d.className='sdot'+(s.id===curId?' on':'');
+    d.style.background=`linear-gradient(135deg,${rgba(a,.95)},${rgba(b,.95)})`;
+    d.title=(s.agentName||'Agent');
+    d.textContent=(s.agentName||'?').slice(0,1).toUpperCase();
+    d.onclick=()=>switchTo(s.id);
+    d.oncontextmenu=e=>{e.preventDefault();openEdit(s.id,false);};
+    U.rail.appendChild(d);
+  });
+  const add=document.createElement('button');
+  add.className='addb';add.textContent='+';add.title='New conversation';
+  add.onclick=()=>newSession();
+  U.rail.appendChild(add);
+  const sp=document.createElement('div');sp.className='railsp';U.rail.appendChild(sp);
+  const edit=document.createElement('button');
+  edit.className='tool';edit.textContent='✎';edit.title='Rename / recolour / delete this one';
+  edit.onclick=()=>openEdit(curId,false);
+  U.rail.appendChild(edit);
+  refreshEmpty();
+}
+// Nothing is transcribed on screen any more. The orb and the state line carry
+// the whole conversation; text under it was a second thing to read while you
+// were trying to listen. These stay as no-ops because the socket handlers and
+// the session switcher still call them.
+function renderChat(){}
+function clearLine(){}
+function showLine(){ return null; }
+
+function newSession(){
+  const n=sessions.length;
+  sessions.unshift({id:'s'+Date.now().toString(36),title:nowTitle(),agentName:'',
+    prompt:'',voice:'Sohee',mode:MODE_DEFAULT,visual:'sphere',
+    colorAgent:n%PALETTE.length,colorUser:(n+1)%PALETTE.length,draft:true});
+  curId=sessions[0].id;saveSessions();el('firstadd').onclick=e=>{e.stopPropagation();newSession();};
+paint();drawRail();renderChat();
+  openEdit(curId,true);          // configure it before anything else happens
+}
+function switchTo(id){
+  if(id===curId)return;
+  curId=id; saveSessions();
+  // paint() is what re-reads the new agent's palette, colour mode and
+  // animation, so everything in the edit sheet is per-agent by construction.
+  paint(); drawRail(); renderChat();
+  if(ws) resetSocket();
+}
+// The rail's hover handlers used to be spliced into the middle of this
+// function - a stray paste. There was already a correct copy further down, so
+// this one was pure duplication: attached late, and again on every switch.
+
+/* The setup sheet. Opening a new chat lands here first: nothing is connected
+   until it has a name, a personality and a voice. */
+let isNew=false;
+function swatches(hostId,current,onPick){
+  const host=el(hostId);host.innerHTML='';
+  PALETTE.forEach((pl,i)=>{
+    const d=document.createElement('div');
+    d.className=i===current?'sel':'';
+    d.style.background=`linear-gradient(135deg,${rgba(pl[0])},${rgba(pl[1])})`;
+    d.onclick=()=>{onPick(i);[...host.children].forEach((x,j)=>x.classList.toggle('sel',j===i));};
+    host.appendChild(d);
+  });
+}
+function openEdit(id,fresh){
+  editId=id;isNew=!!fresh;
+  const s=sessions.find(x=>x.id===id);if(!s)return;
+  el('mtitle').textContent=fresh?'New conversation':'Conversation settings';
+  el('f-name').value=s.agentName||'';
+  el('f-prompt').value=s.prompt||defPrompt(s.agentName);
+  el('f-voice').value=s.voice||'Sohee';
+  const vs=el('f-vis');
+  if(!vs.options.length){
+    for(const [k,v] of Object.entries(VIS_LABEL)){
+      const o=document.createElement('option'); o.value=k; o.textContent=v; vs.appendChild(o);
+    }
+  }
+  vs.value=s.visual||'sphere';
+  vs.onchange=()=>{ s.visual=vs.value; buildHues(); };
+
+  const md=el('f-mode');
+  if(!md.options.length){
+    for(const [k,v] of Object.entries(MODES)){
+      const o=document.createElement('option'); o.value=k; o.textContent=v.label; md.appendChild(o);
+    }
+  }
+  md.value=s.mode||MODE_DEFAULT;
+  // Live preview: the whole point of a colour mode is seeing it, and the sheet
+  // does not cover the orb.
+  md.onchange=()=>{ s.mode=md.value; if(md.value==='random')rollRandom(); buildHues(); };
+  editColor={a:s.colorAgent|0,u:s.colorUser|0};
+  swatches('f-swu',editColor.u,i=>editColor.u=i);
+  swatches('f-swa',editColor.a,i=>editColor.a=i);
+  el('f-hook').value=s.webhook||'';
+  el('f-teststate').textContent='';
+  // A fresh agent must prove its webhook answers before it can be created;
+  // an existing one can be re-saved without re-testing.
+  testOk=!fresh;
+  el('f-save').disabled=fresh;
+  el('f-save').textContent=fresh?'Create':'Save';
+  el('f-del').style.display=(!fresh&&sessions.length>1)?'':'none';
+  // Memory only exists once the agent has a webhook to have talked through.
+  const wipe=el('f-wipe');
+  wipe.style.display=(!fresh&&s.webhook)?'':'none';
+  wipe.textContent='Clear memory'; wipe.disabled=false; wipe.dataset.armed='';
+  if(!fresh&&s.webhook)memCount(s);
+
+  // Typing the name rewrites the prompt's opening - but only while the prompt
+  // is still the generated one. The moment you edit it yourself, it is yours
+  // and we stop touching it.
+  const nm=el('f-name'), pr=el('f-prompt');
+  nm.oninput=()=>{
+    if(pr.value===defPrompt(nm.dataset.last||s.agentName)) pr.value=defPrompt(nm.value);
+    nm.dataset.last=nm.value;
+    U.name.textContent=(nm.value||'').toUpperCase();   // live, behind the sheet
+    document.title=nm.value||'Voice agent';
+  };
+  nm.dataset.last=s.agentName||'';
+
+  U.veil.classList.add('show');
+  setTimeout(()=>el('f-name').focus(),40);
+}
+function closeSheet(){
+  const s=sessions.find(x=>x.id===editId);
+  // A brand-new chat that was never filled in should not linger in the rail.
+  if(isNew&&s&&s.draft){
+    sessions=sessions.filter(x=>x.id!==editId);
+    if(!sessions.length)loadSessions();
+    curId=sessions[0].id;saveSessions();paint();drawRail();renderChat();
+  }
+  isNew=false;U.veil.classList.remove('show');
+}
+el('f-cancel').onclick=closeSheet;
+U.veil.onclick=e=>{if(e.target===U.veil)closeSheet();};
+el('f-hook').oninput=()=>{
+  // The webhook changed: what was tested is no longer what will be saved.
+  testOk=false; el('f-save').disabled=true;
+  el('f-teststate').textContent='';
+};
+el('f-test').onclick=async()=>{
+  const url=el('f-hook').value.trim();
+  const out=el('f-teststate');
+  if(!url){out.textContent='enter the webhook url first';return;}
+  el('f-test').disabled=true;
+  out.textContent='sending a test turn…';
+  try{
+    const r=await fetch('http://127.0.0.1:8090/test',{method:'POST',
+      headers:{'content-type':'application/json'},body:JSON.stringify({url})});
+    const j=await r.json();
+    if(j.ok){
+      testOk=true; el('f-save').disabled=false;
+      out.textContent='✓ '+(j.reply||'').slice(0,90);
+      out.style.color='#6ee7a8';
+    }else{
+      testOk=false; el('f-save').disabled=true;
+      out.textContent='✗ '+(j.error||'failed');
+      out.style.color='#fca5a5';
+    }
+  }catch{
+    out.textContent='✗ router not running - start the system first';
+    out.style.color='#fca5a5';
+  }
+  el('f-test').disabled=false;
+};
+
+el('f-save').onclick=()=>{
+  const s=sessions.find(x=>x.id===editId);if(!s)return;
+  if(!testOk)return;
+  s.agentName=(el('f-name').value.trim()||'Agent');
+  s.webhook=el('f-hook').value.trim();
+  s.prompt=(el('f-prompt').value.trim()||defPrompt(s.agentName));
+  s.voice=el('f-voice').value;
+  s.colorAgent=editColor.a;s.colorUser=editColor.u;
+  s.mode=el('f-mode').value;s.visual=el('f-vis').value;
+  s.title=s.agentName+' · '+nowTitle();
+  delete s.draft;
+  isNew=false;saveSessions();paint();drawRail();U.veil.classList.remove('show');
+  if(ws&&s.id===curId) resetSocket();   // apply live on a clean context
+};
+/* ------------------------------------------------------- agent memory
+   The history lives in Postgres under this agent's session key, put there by
+   n8n's Postgres Chat Memory node. The router owns the only path to it, so the
+   browser asks and the router runs the scoped DELETE. Nothing here touches any
+   other agent's rows. */
+const MEM='http://127.0.0.1:8090/memory/';
+const memBody=s=>({sid:s.id,webhook:s.webhook||''});
+
+async function memCount(s){
+  const b=el('f-wipe');
+  try{
+    const r=await fetch(MEM+'count',{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify(memBody(s))}).then(r=>r.json());
+    if(r.ok)b.textContent=r.messages?('Clear memory ('+r.messages+')'):'Memory empty';
+    b.disabled=r.ok&&!r.messages;
+  }catch{ b.textContent='Clear memory'; }
+}
+
+// Two clicks, not a confirm dialog: this is unrecoverable and a stray click
+// should not be enough to lose a conversation.
+el('f-wipe').onclick=async()=>{
+  const s=sessions.find(x=>x.id===editId); if(!s)return;
+  const b=el('f-wipe');
+  if(b.dataset.armed!=='1'){ b.dataset.armed='1'; b.textContent='Erase it? click again'; 
+    setTimeout(()=>{if(b.dataset.armed==='1'){b.dataset.armed='';memCount(s);}},4000); return; }
+  b.dataset.armed=''; b.disabled=true; b.textContent='clearing...';
+  try{
+    const r=await fetch(MEM+'clear',{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify(memBody(s))}).then(r=>r.json());
+    b.textContent = r.ok ? (r.deleted?('erased '+r.deleted):'nothing stored') : (r.error||'failed');
+  }catch{ b.textContent='router unreachable'; }
+  // The model is holding the same conversation in this socket's context, so the
+  // wipe is only half done until the socket is recycled.
+  if(ws&&s.id===curId)resetSocket();
+};
+
+el('f-del').onclick=async()=>{
+  if(sessions.length<2)return;
+  const s=sessions.find(x=>x.id===editId);
+  // Delete the rows too, or they are orphaned in Postgres forever - nothing
+  // else knows this key ever existed once the agent is gone from the browser.
+  if(s&&s.webhook){ try{ await fetch(MEM+'clear',{method:'POST',
+    headers:{'content-type':'application/json'},body:JSON.stringify(memBody(s))}); }catch{} }
+  sessions=sessions.filter(x=>x.id!==editId);
+  if(curId===editId)curId=sessions[0].id;
+  isNew=false;saveSessions();paint();drawRail();renderChat();U.veil.classList.remove('show');
+};
+
+/* --------------------------------------------------------------- audio */
+async function startAudio(){
+  ctx=new (window.AudioContext||window.webkitAudioContext)();
+  await ctx.resume();
+  micStream=await navigator.mediaDevices.getUserMedia({
+    audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true,channelCount:1}});
+  const u=URL.createObjectURL(new Blob([MIC_WORKLET],{type:'application/javascript'}));
+  await ctx.audioWorklet.addModule(u);URL.revokeObjectURL(u);
+  const src=ctx.createMediaStreamSource(micStream);
+  micAn=ctx.createAnalyser();micAn.fftSize=1024;micAn.smoothingTimeConstant=.75;
+  micF=new Uint8Array(micAn.frequencyBinCount);src.connect(micAn);
+  micNode=new AudioWorkletNode(ctx,'mic-proc');
+  micNode.port.onmessage=e=>{
+    if(ws&&ws.readyState===1&&configured&&!muted)
+      ws.send(JSON.stringify({type:'input_audio_buffer.append',audio:b64(e.data.pcm)}));};
+  src.connect(micNode);
+  muteSink=ctx.createGain();muteSink.gain.value=0;      // keeps the worklet in the render graph
+  micNode.connect(muteSink);muteSink.connect(ctx.destination);
+  outGain=ctx.createGain();outGain.gain.value=VOLUME;
+  const lim=ctx.createDynamicsCompressor();
+  lim.threshold.value=-8;lim.knee.value=4;lim.ratio.value=12;lim.attack.value=.003;lim.release.value=.25;
+  aiAn=ctx.createAnalyser();aiAn.fftSize=1024;aiAn.smoothingTimeConstant=.72;
+  aiF=new Uint8Array(aiAn.frequencyBinCount);
+  outGain.connect(lim);lim.connect(aiAn);lim.connect(ctx.destination);
+  playHead=ctx.currentTime;
+}
+const b64=b=>{const a=new Uint8Array(b);let s='';
+  for(let i=0;i<a.length;i+=0x8000)s+=String.fromCharCode.apply(null,a.subarray(i,i+0x8000));return btoa(s);};
+const unb64=s=>{const x=atob(s),a=new Uint8Array(x.length);
+  for(let i=0;i<x.length;i++)a[i]=x.charCodeAt(i);return a;};
+function play(d){
+  const by=unb64(d),pcm=new Int16Array(by.buffer,by.byteOffset,Math.floor(by.byteLength/2));
+  const buf=ctx.createBuffer(1,pcm.length,RATE),f=buf.getChannelData(0);
+  for(let i=0;i<pcm.length;i++)f[i]=pcm[i]/32768;
+  const s=ctx.createBufferSource();s.buffer=buf;s.connect(outGain);
+  s.playbackRate.value=SPEED;
+  playHead=Math.max(playHead,ctx.currentTime+.04);s.start(playHead);
+  playHead+=buf.duration/SPEED;
+  live.push(s);
+  s.onended=()=>{live=live.filter(x=>x!==s);
+    if(!live.length&&phase==='ai')setPhase('listening');};
+}
+const stopPlay=()=>{live.forEach(s=>{try{s.stop()}catch{}});live=[];playHead=ctx?ctx.currentTime:0;};
+
+/* ----------------------------------------------------------- websocket */
+const LABEL={idle:'',connecting:'connecting',listening:'listening',
+  user:'hearing you',thinking:'thinking',ai:'speaking'};
+function setPhase(p){ if(phase===p)return; phase=p; U.state.textContent=LABEL[p]||p; }
+
+/* Load this session's history into the model, then either let it open the
+   conversation or pick up where it left off. Items are injected without
+   triggering generation; response.create is what makes her speak. */
+function primeSession(){
+  const s=S();
+  ws.send(JSON.stringify({type:'session.update',session:{type:'realtime',
+    instructions:(s.prompt||DEFAULT_PROMPT)+VOICE_RULES+(s.greeted?'':PROMPT_OPEN)
+      +(s.webhook?'\n[route:'+s.webhook+']\n[sid:'+s.id+']':''),
+    audio:{output:{voice:s.voice||'Sohee'}}}}));
+  configured=true;
+  renderChat();
+
+  // No history is replayed. Memory lives in the workflow now - whatever the
+  // pipeline is pointed at owns it. Sending our own copy as well would put the
+  // same conversation in front of the model twice.
+  if(!s.greeted){
+    s.greeted=true; saveSessions();
+    ws.send(JSON.stringify({type:'conversation.item.create',item:{type:'message',role:'user',
+      content:[{type:'input_text',text:'Hello.'}]}}));
+    setPhase('thinking');
+    ws.send(JSON.stringify({type:'response.create'}));
+  } else {
+    setPhase('listening');
+  }
+}
+
+function connect(){
+  setPhase('connecting');
+  ws=new WebSocket(WS_URL);
+  ws.onopen=()=>{
+    connected=true;busy=false;slotRetry=0;
+    primeSession();
+    U.hint.textContent='just talk · space to mute · esc to end';
+    setTimeout(()=>{U.hint.style.opacity='0';},6500);
+  };
+  ws.onclose=()=>teardown();
+  ws.onerror=()=>{busy=false;U.state.textContent='cannot reach the pipeline';};
+  ws.onmessage=async ev=>{
+    let m;try{m=JSON.parse(typeof ev.data==='string'?ev.data:await ev.data.text());}catch{return;}
+    switch(m.type){
+      case 'input_audio_buffer.speech_started':
+        setPhase('user');stopPlay();
+        break;
+      case 'input_audio_buffer.speech_stopped':
+        if(phase==='user')setPhase('thinking');break;
+      case 'conversation.item.input_audio_transcription.completed':
+        break;
+        break;
+      case 'response.output_audio_transcript.done':
+      case 'response.audio_transcript.done':
+        break;
+        break;
+      case 'response.output_audio.delta':
+      case 'response.audio.delta':
+        if(m.delta){if(phase!=='ai')setPhase('ai');play(m.delta);}break;
+      case 'response.done':{
+        if(!live.length&&phase!=='user')setPhase('listening');
+        // A response that produced no audio and no text means the LLM call failed;
+        // silence on screen is the worst possible way to report that.
+        const st=m.response&&m.response.status;
+        if(st==='failed'||st==='incomplete'){
+          const why=(m.response.status_details&&JSON.stringify(m.response.status_details))||st;
+          console.error('response',st,m.response);
+          U.state.textContent='no reply - see console';
+        }
+        break;}
+      case 'error':{
+        const msg=(m.error&&m.error.message)||'unknown';
+        console.error(m);
+        // A slot can still be busy for a moment after the previous socket closed.
+        // Retry quietly rather than showing the user a dead end.
+        if(/session slots are in use/i.test(msg)&&slotRetry<4){
+          slotRetry++;
+          U.state.textContent='waiting for a slot';
+          if(ws){const o=ws;ws=null;o.onclose=null;o.onmessage=null;o.onerror=null;try{o.close()}catch{}}
+          setTimeout(connect,600*slotRetry);
+          break;
+        }
+        U.state.textContent='error - see console';
+        break;}
+    }
+  };
+}
+// The server builds a fresh Chat only in register(), i.e. once per WebSocket
+// connection - there is no event that clears it mid-connection. So switching
+// session or clearing memory while connected has to recycle the socket, or the
+// previous conversation stays in the model's context and the two bleed.
+//
+// The pipeline runs a fixed pool (num_pipelines, 2 by default) and only frees a
+// slot once the old socket has actually closed. Opening the new one immediately
+// therefore fails with "All 2 session slots are in use", so wait for the close
+// to land before reconnecting. The mic and audio graph are left untouched.
+function resetSocket(){
+  if(!ctx) return;                     // not connected: nothing server-side to clear
+  configured=false;
+  stopPlay();
+  setPhase('connecting');
+
+  if(!ws){ connect(); return; }
+  const old=ws; ws=null;
+  old.onmessage=null; old.onerror=null;
+
+  let started=false;
+  const go=()=>{ if(started) return; started=true; setTimeout(connect,120); };
+  old.onclose=go;                      // the slot is released here
+  try{ old.close(); }catch{ go(); }
+  setTimeout(go,2000);                 // fallback if close never fires
+}
+
+function teardown(){
+  connected=false;configured=false;busy=false;
+  setPhase('idle');stopPlay();
+  U.hint.style.opacity='1';U.hint.textContent='';
+  if(micStream){micStream.getTracks().forEach(t=>t.stop());micStream=null;}
+  if(ctx){ctx.close();ctx=null;}
+  micAn=aiAn=null;ws=null;
+}
+
+/* ======================================================================
+   1400 points on a Fibonacci lattice, rotated in 3D with real perspective.
+   ================================================================== */
+const cv=el('c'),g=cv.getContext('2d');
+let W=0,H=0,DPR=1,t=0;
+const N=1500, pts=[];
+const NM=12;   // how many vibration modes the surface can hold
+
+/* --------------------------------------------------------------------------
+   The surface is displaced by real SPHERICAL HARMONICS - the exact normal
+   modes of a vibrating sphere, the 3D form of the Chladni figures sand makes
+   on a driven plate. l sets how many oscillations wrap the sphere, m how many
+   go around the equator. Driving them with the audio spectrum is not a
+   metaphor: this is the shape a sphere takes when that sound is applied to it.
+
+   The whole reason this is affordable is that every angular term is CONSTANT
+   per point. Yl^m(theta,phi) factors into (a function of latitude) x
+   (cos or sin of m*phi), and neither changes as the sphere spins - only the
+   twelve mode amplitudes do. So each point stores 24 precomputed numbers and
+   a frame costs 12 multiply-adds per point instead of twelve trig evaluations.
+
+   Storing BOTH cos(m.phi) and sin(m.phi) buys the phase for free:
+       cos(m.phi + wt) = cos(m.phi)cos(wt) - sin(m.phi)sin(wt)
+   so the lobes rotate around the axis at a speed we choose per mode, rather
+   than sitting frozen where they were born.
+   -------------------------------------------------------------------------- */
+const MODE_M   = [0, 2, 0, 3, 0, 4, 5, 6, 1, 2, 3, 0];   // azimuthal order
+const MODE_SPIN= [0,.22, 0,-.15, 0,.11,-.08,.06,.30,-.19,.13, 0]; // lobe drift
+function basis(x,y,z,out){
+  const st=Math.sqrt(Math.max(0,1-y*y));       // sin(theta)
+  const ph=Math.atan2(z,x);                    // phi
+  const y2=y*y, y3=y2*y, y4=y2*y2;
+  const P=[];                                  // sin^m(theta)
+  let sm=1; for(let m=0;m<=6;m++){P[m]=sm; sm*=st;}
+  const C=[],S=[];
+  for(let m=0;m<=6;m++){C[m]=Math.cos(m*ph);S[m]=Math.sin(m*ph);}
+  // Legendre parts, scaled so each mode peaks near +/-1 and no single one
+  // dominates the sum by accident of normalisation.
+  const L20=(3*y2-1)*.5, L30=(5*y3-3*y)*.5, L40=(35*y4-30*y2+3)*.125;
+  const set=(k,c,sn)=>{out[k*2]=c;out[k*2+1]=sn;};
+  set(0, L20, 0);                       // Y20  oblate <-> prolate
+  set(1, P[2]*C[2], P[2]*S[2]);         // Y22  two equatorial lobes
+  set(2, L30, 0);                       // Y30  three polar lobes
+  set(3, P[3]*C[3], P[3]*S[3]);         // Y33  three equatorial lobes
+  set(4, L40, 0);                       // Y40
+  set(5, P[4]*C[4], P[4]*S[4]);         // Y44
+  set(6, P[5]*C[5], P[5]*S[5]);         // Y55
+  set(7, P[6]*C[6], P[6]*S[6]);         // Y66  finest ripple
+  set(8, P[1]*y*C[1]*2, P[1]*y*S[1]*2); // Y21  tilted single lobe
+  set(9, P[2]*y*C[2]*2, P[2]*y*S[2]*2); // Y32
+  set(10,P[3]*y*C[3]*2, P[3]*y*S[3]*2); // Y43
+  set(11,y, 0);                         // Y10  the sphere leans bodily
+}
+for(let i=0;i<N;i++){
+  const y=1-(i/(N-1))*2, r=Math.sqrt(Math.max(0,1-y*y));
+  const th=Math.PI*(1+Math.sqrt(5))*i;
+  const x=Math.cos(th)*r, z=Math.sin(th)*r;
+  const h=new Float32Array(NM*2); basis(x,y,z,h);
+  pts.push({x,y,z,h,
+    bv:.5+.5*Math.sin(y*10.5+Math.sin(y*3.1)*1.7),
+    lb:Math.max(0,Math.min(15,Math.floor((y+1)*8))),
+    amp:0,seed:Math.random()*Math.PI*2});
+}
+// live mode amplitudes, eased - never jumped, or the surface snaps
+const mAmp=new Float64Array(NM), mC=new Float64Array(NM), mS=new Float64Array(NM);
+// One white sprite, tinted per frame with a single globalCompositeOperation
+// pass. Blitting this 1400 times costs a fraction of 1400 arc() fills.
+const SPR=24;
+const spriteCv=document.createElement('canvas');
+spriteCv.width=spriteCv.height=SPR;
+{
+  const sg=spriteCv.getContext('2d');
+  const rg=sg.createRadialGradient(SPR/2,SPR/2,0,SPR/2,SPR/2,SPR/2);
+  // Tight hot core with a wide soft falloff, rather than one broad blur. The
+  // narrow bright centre is what reads as a specular glint; the long tail is
+  // the bloom around it.
+  rg.addColorStop(0,   'rgba(255,255,255,1)');
+  rg.addColorStop(.14, 'rgba(255,255,255,.97)');
+  rg.addColorStop(.30, 'rgba(255,255,255,.58)');
+  rg.addColorStop(.55, 'rgba(255,255,255,.22)');
+  rg.addColorStop(.78, 'rgba(255,255,255,.07)');
+  rg.addColorStop(1,   'rgba(255,255,255,0)');
+  sg.fillStyle=rg;sg.fillRect(0,0,SPR,SPR);
+}
+// Reused every frame - allocating 1400 objects at 60 fps was the other stall.
+const buf=new Array(N);
+for(let i=0;i<N;i++)buf[i]={sx:0,sy:0,d:0,z:0,a:0,l:0,bv:0,rim:0};
+const order=new Array(N);
+for(let i=0;i<N;i++)order[i]=i;
+// The sprite is tinted once and cached. Re-tinting a 64x64 image when the
+// colour actually moves is far cheaper than compositing a full-screen layer
+// every frame - that was three passes over ~24 million pixels at DPR 2, which
+// is what made the transition into "thinking" hitch.
+function makeTint(){
+  const c=document.createElement('canvas'); c.width=c.height=SPR;
+  return {cv:c, g:c.getContext('2d'), was:[-1,-1,-1]};
+}
+const tintA=makeTint(), tintB=makeTint();   // near colour, far colour
+function tintOne(T,r,gg,b){
+  if(Math.abs(r-T.was[0])<3&&Math.abs(gg-T.was[1])<3&&Math.abs(b-T.was[2])<3)return;
+  T.was=[r,gg,b];
+  const tg=T.g;
+  tg.imageSmoothingEnabled=false;
+  tg.clearRect(0,0,SPR,SPR);
+  tg.drawImage(spriteCv,0,0);
+  tg.globalCompositeOperation='source-in';
+  tg.fillStyle=`rgb(${r},${gg},${b})`;
+  tg.fillRect(0,0,SPR,SPR);
+  tg.globalCompositeOperation='source-over';
+}
+
+function size(){
+  // 1.5 is plenty for soft particles and costs ~44% fewer pixels than 2.
+  DPR=Math.min(devicePixelRatio||1,1.5);W=innerWidth;H=innerHeight;
+  cv.width=W*DPR;cv.height=H*DPR;g.setTransform(DPR,0,0,DPR,0,0);
+  g.imageSmoothingEnabled=false;   // no resampling filter on every blit
+}
+size();addEventListener('resize',size);
+
+let shearPh=0;
+let hue=[150,165,200,120,140,190],rotX=0,rotY=0,energy=0,pulse=0,sortTick=0,bass=0;
+
+
+/* ==========================================================================
+   VISUALS - eight interchangeable renderers.
+
+   Each one gets a context C and draws into g. They share one convention: work
+   in unit-sphere coordinates, project through vpr(), and stroke through the
+   depth-bucketed batcher below. Colour and audio come from C so every visual
+   answers to the agent's palette and to your voice without knowing anything
+   about either.
+
+   The batcher matters. Setting strokeStyle per segment is the expensive part
+   of line rendering - it forces a state change between every draw. Segments
+   are collected into ten depth buckets and each bucket is stroked once as a
+   single Path2D, which turns ~3000 state changes into 10.
+   ========================================================================== */
+function vrot(x,y,z,ax,ay){
+  const cA=Math.cos(ay),sA=Math.sin(ay);
+  let X=x*cA-z*sA, Z=x*sA+z*cA;
+  const cB=Math.cos(ax),sB=Math.sin(ax);
+  const Y=y*cB-Z*sB; Z=y*sB+Z*cB;
+  return [X,Y,Z];
+}
+function vpr(C,x,y,z,k){
+  let d=C.fov/(C.fov+z*C.R*(k||1.5));
+  if(d>2.9)d=2.9; if(d<.05)d=.05;
+  return [C.cx+x*C.R*d, C.cy+y*C.R*d, d, z];
+}
+const BK=10, bkP=new Array(BK);
+function segReset(){ for(let i=0;i<BK;i++) bkP[i]=null; }
+function segAdd(dep,ax,ay,bx,by){
+  let i=(dep*BK)|0; if(i<0)i=0; if(i>=BK)i=BK-1;
+  let p=bkP[i]; if(!p)p=bkP[i]=new Path2D();
+  p.moveTo(ax,ay); p.lineTo(bx,by);
+}
+function segFlush(C,aScale,wScale){
+  g.globalCompositeOperation='lighter';
+  for(let i=0;i<BK;i++){
+    const p=bkP[i]; if(!p)continue;
+    const dep=(i+.5)/BK;
+    const r=(C.r2+(C.r1-C.r2)*dep)|0, gg=(C.g2+(C.g1-C.g2)*dep)|0, b=(C.b2+(C.b1-C.b2)*dep)|0;
+    g.strokeStyle='rgba('+r+','+gg+','+b+','+((.045+dep*dep*.60)*aScale).toFixed(3)+')';
+    g.lineWidth=(.35+dep*dep*2.1)*wScale;
+    g.stroke(p);
+  }
+  g.globalCompositeOperation='source-over';
+}
+// One shared drive value so every visual reacts to the same thing: loud when
+// she speaks, loud when you speak, a slow swell otherwise.
+function vdrive(C){
+  return C.speaking?(.35+C.bass*.9)
+       : C.listening?(.18+C.energy*1.0+C.breathe*.20)
+       : C.thinking ?(.30+.22*Math.sin(C.t*.9))
+       : .16+.10*Math.sin(C.t*.31);
+}
+
+/* -------------------------------------------------------- 2. Hopf fibration
+   Fibres of the Hopf map S3 -> S2, stereographically projected into R3. Every
+   fibre is a circle, and every pair of them is linked - you cannot separate
+   any two without cutting one. They nest into tori that sweep from a straight
+   line through the centre out to a wide ring. */
+const HOPF_N=30, HOPF=[];
+for(let i=0;i<HOPF_N;i++)
+  HOPF.push({b:Math.acos(1-2*(i+.5)/HOPF_N), a:i*2.399963, s:i/HOPF_N});
+function visHopf(C){
+  const dr=vdrive(C), SEG=76;
+  segReset();
+  for(let f=0;f<HOPF_N;f++){
+    const F=HOPF[f];
+    // Audio opens the cone angle: quiet = fibres bunched near one pole,
+    // loud = spread across the whole 2-sphere of base points.
+    const b=F.b*(.55+dr*.75), a=F.a+C.t*.20+F.s*dr*2.2;
+    const cb=Math.cos(b/2), sb=Math.sin(b/2);
+    let px=0,py=0,pz=0,first=true;
+    for(let j=0;j<=SEG;j++){
+      const th=j/SEG*Math.PI*2;
+      const q0=cb*Math.cos(th), q1=cb*Math.sin(th),
+            q2=sb*Math.cos(a+th), q3=sb*Math.sin(a+th);
+      const sc=.55/(1-q3+1e-4);          // stereographic projection from q3=1
+      const P=vrot(q0*sc,q1*sc,q2*sc,C.rx,C.ry);
+      const A=vpr(C,P[0],P[1],P[2],1.15);
+      if(!first)segAdd((A[3]+1)*.5,px,py,A[0],A[1]);
+      px=A[0];py=A[1];first=false;
+    }
+  }
+  segFlush(C,1.0+dr*.9,1.0);
+}
+
+/* ------------------------------------------------------ 3. Flow filaments
+   Curl noise: the curl of a vector field is divergence-free, so the flow can
+   never compress or rarefy. Strands therefore stay evenly spread instead of
+   bunching into clumps - the difference between silk and smoke. */
+const FIL_N=200, FIL=[];
+for(let i=0;i<FIL_N;i++){
+  const y=1-(i/(FIL_N-1))*2, r=Math.sqrt(Math.max(0,1-y*y)), th=i*2.399963;
+  FIL.push({p:[Math.cos(th)*r,y,Math.sin(th)*r],tr:[]});
+}
+function fnz(x,y,z){ return Math.sin(x*2.1+z*1.3)*Math.cos(y*1.9-x*.7)+.5*Math.sin(y*3.3+z*2.1); }
+function visSilk(C){
+  const dr=vdrive(C), e=.09, sp=.004+dr*.016, TL=(18+dr*26)|0;
+  segReset();
+  for(let i=0;i<FIL_N;i++){
+    const f=FIL[i], q=f.p;
+    const x=q[0]*1.6+C.t*.10, y=q[1]*1.6, z=q[2]*1.6;
+    const dy=(fnz(x,y+e,z)-fnz(x,y-e,z))/(2*e),
+          dz=(fnz(x,y,z+e)-fnz(x,y,z-e))/(2*e),
+          dx=(fnz(x+e,y,z)-fnz(x-e,y,z))/(2*e);
+    q[0]+=(dz-dy)*sp; q[1]+=(dx-dz)*sp; q[2]+=(dy-dx)*sp;
+    const L=Math.hypot(q[0],q[1],q[2])||1;      // held on the sphere
+    q[0]/=L; q[1]/=L; q[2]/=L;
+    const P=vrot(q[0],q[1],q[2],C.rx,C.ry);
+    f.tr.push(vpr(C,P[0],P[1],P[2],1.5));
+    while(f.tr.length>TL)f.tr.shift();
+    for(let j=1;j<f.tr.length;j++){
+      const A=f.tr[j-1],B=f.tr[j];
+      segAdd((B[3]+1)*.5*(j/f.tr.length),A[0],A[1],B[0],B[1]);
+    }
+  }
+  segFlush(C,1.5+dr,1.15);
+}
+
+/* --------------------------------------------------- 4. Harmonic contours
+   The same spherical harmonics the dot sphere uses, drawn as closed latitude
+   loops on the deformed surface instead of scattered points. Identical
+   mathematics; the structure becomes legible because a stroke is continuous
+   and your eye can follow it. */
+function visContour(C){
+  const dr=vdrive(C), LN=30, SEG=110;
+  const A2=.16+dr*.42, A4=.10+dr*.30, A0=.10+dr*.24;
+  segReset();
+  for(let li=0;li<LN;li++){
+    const lat=(li+.5)/LN*Math.PI, y0=Math.cos(lat), st=Math.sin(lat);
+    let px=0,py=0,first=true;
+    for(let j=0;j<=SEG;j++){
+      const lon=j/SEG*Math.PI*2;
+      const d=A2*st*st*Math.cos(2*lon+C.t*.62)
+             +A4*Math.pow(st,4)*Math.cos(4*lon-C.t*.44)
+             +A0*(3*y0*y0-1)*.5*Math.sin(C.t*.5);
+      const rr=1+d;
+      const P=vrot(st*Math.cos(lon)*rr,y0*rr,st*Math.sin(lon)*rr,C.rx,C.ry);
+      const A=vpr(C,P[0],P[1],P[2],2.0);
+      if(!first)segAdd((A[3]+1)*.5,px,py,A[0],A[1]);
+      px=A[0];py=A[1];first=false;
+    }
+  }
+  segFlush(C,1.1+dr*.7,1.0);
+}
+
+/* -------------------------------------------------------- 5. Torus knot
+   A (p,q) torus knot: a closed curve winding p times around the torus axis
+   and q times through its hole. Coprime p and q give a genuine knot; the pair
+   drifts, so it reties itself into a different knot as you watch. */
+function visKnot(C){
+  const dr=vdrive(C), SEG=560;
+  const pq=[[2,3],[3,4],[3,5],[4,5],[5,7],[2,5],[4,7],[5,8]];
+  const idx=Math.floor(C.t*.055)%pq.length, nx=(idx+1)%pq.length;
+  const mix=(C.t*.055)%1, ease=mix*mix*(3-2*mix);       // smoothstep between knots
+  const P1=pq[idx][0]+(pq[nx][0]-pq[idx][0])*ease;
+  const Q1=pq[idx][1]+(pq[nx][1]-pq[idx][1])*ease;
+  const tube=.30+dr*.34;
+  segReset();
+  let px=0,py=0,first=true;
+  for(let j=0;j<=SEG;j++){
+    const u=j/SEG*Math.PI*2;
+    const r=.62+tube*Math.cos(Q1*u);
+    const P=vrot(r*Math.cos(P1*u), tube*Math.sin(Q1*u), r*Math.sin(P1*u), C.rx, C.ry+C.t*.12);
+    const A=vpr(C,P[0],P[1],P[2],1.7);
+    if(!first)segAdd((A[3]+1)*.5,px,py,A[0],A[1]);
+    px=A[0];py=A[1];first=false;
+  }
+  segFlush(C,2.4+dr*1.6,2.3);
+}
+
+/* ------------------------------------------------------ 6. Aizawa attractor
+   A chaotic system: nearby particles diverge exponentially, so the cloud
+   never repeats and never settles, yet every trajectory stays trapped on the
+   same finite shape. Deterministic, but you cannot predict where any one
+   particle will be. */
+const AIZ_N=420, AIZ=[];
+for(let i=0;i<AIZ_N;i++)
+  AIZ.push([(Math.random()-.5)*.9,(Math.random()-.5)*.9,(Math.random()-.5)*.9,0,0,false]);
+function visAizawa(C){
+  const dr=vdrive(C);
+  const a=.95,b=.7,c=.6,d=3.5,e=.25, f=.1+dr*.16;
+  const dt=.0085+dr*.010;
+  segReset();
+  for(let i=0;i<AIZ_N;i++){
+    const P=AIZ[i]; const x=P[0],y=P[1],z=P[2];
+    const dx=(z-b)*x-d*y, dy=d*x+(z-b)*y, dz=c+a*z-z*z*z/3-(x*x+y*y)*(1+e*z)+f*z*x*x*x;
+    P[0]+=dx*dt; P[1]+=dy*dt; P[2]+=dz*dt;
+    if(!isFinite(P[0])||Math.hypot(P[0],P[1],P[2])>6){
+      P[0]=(Math.random()-.5)*.9;P[1]=(Math.random()-.5)*.9;P[2]=(Math.random()-.5)*.9;P[5]=false;
+    }
+    const R=vrot(P[0]*.52,(P[2]-1.0)*.52,P[1]*.52,C.rx,C.ry+C.t*.10);
+    const A=vpr(C,R[0],R[1],R[2],1.5);
+    if(P[5])segAdd((A[3]+1)*.5,P[3],P[4],A[0],A[1]);
+    P[3]=A[0];P[4]=A[1];P[5]=true;
+  }
+  segFlush(C,2.2+dr*1.4,1.5);
+}
+
+/* ------------------------------------------------------- 7. Superformula
+   Gielis' superformula. One equation, six parameters, and it produces
+   starfish, flowers, shells, polygons and circles as special cases. Drifting
+   the parameters walks continuously through that whole space of forms. */
+function sfr(ang,m,n1,n2,n3){
+  const a=Math.pow(Math.abs(Math.cos(m*ang/4)),n2),
+        b=Math.pow(Math.abs(Math.sin(m*ang/4)),n3);
+  return Math.pow(a+b,-1/n1);
+}
+function visBloom(C){
+  const dr=vdrive(C), LN=26, SEG=120;
+  const m1=3+2.5*(1+Math.sin(C.t*.11)), n1=.30+.25*Math.sin(C.t*.09)+dr*.25;
+  const m2=5+3.0*(1+Math.sin(C.t*.07+2)), n2=.45+.30*Math.sin(C.t*.13+1);
+  segReset();
+  for(let li=0;li<=LN;li++){
+    const lat=-Math.PI/2+li/LN*Math.PI;
+    const r2=sfr(lat,m2,n2,1.7,1.7);
+    let px=0,py=0,first=true;
+    for(let j=0;j<=SEG;j++){
+      const lon=-Math.PI+j/SEG*Math.PI*2;
+      const r1=sfr(lon,m1,n1,1.7,1.7);
+      const x=r1*Math.cos(lon)*r2*Math.cos(lat),
+            y=r2*Math.sin(lat),
+            z=r1*Math.sin(lon)*r2*Math.cos(lat);
+      const P=vrot(x*.80,y*.80,z*.80,C.rx,C.ry);
+      const A=vpr(C,P[0],P[1],P[2],1.6);
+      if(!first)segAdd((A[3]+1)*.5,px,py,A[0],A[1]);
+      px=A[0];py=A[1];first=false;
+    }
+  }
+  segFlush(C,1.2+dr*.8,1.0);
+}
+
+/* --------------------------------------------------------- 8. Cymatic rings
+   A circular drumhead vibrating in mode (n,k): the radial part is a Bessel
+   function, the angular part cos(n.theta). Sand on a real membrane collects
+   exactly on these nodal lines. This is what your voice would draw on a
+   physical plate. */
+const BES=[[2.405,5.520,8.654,11.79],[3.832,7.016,10.17,13.32],
+           [5.136,8.417,11.62,14.80],[6.380,9.761,13.02,16.22],
+           [7.588,11.06,14.37,17.62],[8.771,12.34,15.70,18.98]];
+function bessel0(x){                    // J0 via its series, plenty at this range
+  let s=1,term=1;
+  for(let k=1;k<14;k++){ term*=-(x*x)/(4*k*k); s+=term; }
+  return s;
+}
+function visCymatic(C){
+  const dr=vdrive(C);
+  const n=(Math.floor(C.t*.13)%6), k=(Math.floor(C.t*.071)%4);
+  const lam=BES[n][k], amp=.22+dr*.55, RINGS=34, SEG=150;
+  segReset();
+  for(let ri=1;ri<=RINGS;ri++){
+    const rho=ri/RINGS;
+    const J=bessel0(lam*rho);
+    let px=0,py=0,first=true;
+    for(let j=0;j<=SEG;j++){
+      const th=j/SEG*Math.PI*2;
+      const w=J*Math.cos(n*th+C.t*.5)*amp;      // displacement out of the plane
+      const P=vrot(rho*Math.cos(th), w, rho*Math.sin(th), C.rx+.62, C.ry+C.t*.06);
+      const A=vpr(C,P[0],P[1],P[2],1.4);
+      if(!first)segAdd((A[3]+1)*.5,px,py,A[0],A[1]);
+      px=A[0];py=A[1];first=false;
+    }
+  }
+  segFlush(C,1.3+dr*.9,1.0);
+}
+
+const VIS={hopf:visHopf,silk:visSilk,contour:visContour,knot:visKnot,
+           aizawa:visAizawa,bloom:visBloom,cymatic:visCymatic};
+const VIS_LABEL={
+  sphere:'Resonant sphere - harmonic modes on a point shell',
+  hopf:'Hopf fibration - every circle linked with every other',
+  silk:'Flow filaments - curl noise, strands never bunch',
+  contour:'Harmonic contours - the same modes, drawn as curves',
+  knot:'Torus knot - reties itself into a new knot as it turns',
+  aizawa:'Aizawa attractor - chaotic, never repeats, never escapes',
+  bloom:'Superformula - one equation, endless organic forms',
+  cymatic:'Cymatic plate - Bessel modes, what sound draws in sand'
+};
+const VIS_DEFAULT='sphere';
+
+let skip=0;
+function frame(){
+  requestAnimationFrame(frame);
+  // Nothing is speaking and nothing is thinking: render at 30 fps instead of 60.
+  // Halves the cost of the state the app sits in most of the time.
+  if(phase==='idle'||phase==='listening'){ if((skip++ & 1)) return; t+=2/60; }
+  else t+=1/60;
+
+  let F=null,level=0;
+  if(phase==='ai'&&aiAn){aiAn.getByteFrequencyData(aiF);F=aiF;}
+  else if(micAn&&!muted&&phase!=='thinking'){micAn.getByteFrequencyData(micF);F=micF;}
+  if(F){let s=0;for(let i=0;i<60;i++)s+=F[i];level=Math.min(1,s/60/150);}
+  energy+=(level-energy)*.09;
+  // A separate, much slower envelope from the low bins only. Per-point FFT
+  // tracking made every particle flicker independently, which reads as
+  // flashing; one deep, heavily-damped value makes the whole sphere breathe.
+  let low=0;
+  if(F){for(let i=2;i<24;i++)low+=F[i];low=Math.min(1,low/22/165);}
+  bass+=(low-bass)*.035;
+  pulse*=.978; if(level>.62)pulse=Math.max(pulse,level*.5);
+
+  const tgt=HUES[phase]||HUES.idle;
+  for(let i=0;i<3;i++)hue[i]+=(tgt[0][i]-hue[i])*.045;
+  for(let i=0;i<3;i++)hue[3+i]+=(tgt[1][i]-hue[3+i])*.045;
+  let R,G,B,R2,G2,B2;
+  if(curSpin){
+    const d=(t*curSpin)%360;
+    const c1=hueRot([hue[0],hue[1],hue[2]],d), c2=hueRot([hue[3],hue[4],hue[5]],d);
+    R=c1[0]|0;G=c1[1]|0;B=c1[2]|0; R2=c2[0]|0;G2=c2[1]|0;B2=c2[2]|0;
+  } else {
+    R=hue[0]|0;G=hue[1]|0;B=hue[2]|0; R2=hue[3]|0;G2=hue[4]|0;B2=hue[5]|0;
+  }
+
+  const thinking=phase==='thinking';
+  const speaking=phase==='ai';
+  // Listening had nothing driving it: no audio energy, no thinking spin, so it
+  // decayed to a dark ball indistinguishable from idle. It now breathes on its
+  // own clock - a slow swell you can read across the room as "waiting for you".
+  const listening=phase==='listening';
+  // t advances at 1 unit per second in both the 30 fps and 60 fps paths.
+  // 1.45 was a swell every 4 s, which is roughly a nervous breath - it read as
+  // blinking. 0.52 is ~12 s, slower than resting human breathing, and a second
+  // much slower term keeps it from ever repeating exactly. Calm, not periodic.
+  const breathe=listening
+    ? (.5+.5*Math.sin(t*.52))*(.78+.22*Math.sin(t*.17+1.3))
+    : 0;
+  const spin=phase==='idle'?.0009:(thinking?.0042:(speaking?.0014+bass*.0016:.0018+energy*.005));
+    rotY+=spin;
+  // Was a pure sine through zero, so twice a cycle the scene passed through
+  // exactly level and the ring collapsed to a straight line across the screen.
+  // A fixed tilt with a smaller wobble on top: the ellipse stays an ellipse.
+  rotX=.36+Math.sin(t*.10)*.13;
+  // Differential rotation: the equator laps the poles, as on a real gas giant.
+  // This is what makes belts shear past each other instead of the whole shell
+  // turning as one rigid object - the single strongest cue that it is fluid.
+  shearPh+=thinking?.0060:.0020+energy*.0026;
+
+  g.clearRect(0,0,W,H);
+  const cx=W/2+22, cy=H/2-18;   // the caption strip is gone, so sit nearer centre
+  const radius=Math.min(W,H)*(phase==='idle'?.205:.222)
+                 *(1+(speaking?bass*.07:energy*.12)+breathe*.055)
+                 *(thinking?.93+.02*Math.sin(t*1.9):1);
+    // Lower FOV = stronger perspective. At 1.25 the near and far faces were
+  // almost the same size, which is why it read as a flat disc of dots.
+  const FOV=Math.min(W,H)*0.92;
+  // A light fixed in world space, up and to the left, slightly in front. The
+  // sphere rotates through it, so points genuinely move from lit into shadow -
+  // that, not depth-dimming, is what makes it read as a solid body.
+  const LX=-.42, LY=-.56, LZ=.72;
+
+  // Reaches most of the way across the screen now, and carries the far colour
+  // in its outer band so the wash is not one flat tint.
+  const gl=g.createRadialGradient(cx,cy,radius*.15,cx,cy,radius*3.9);
+  gl.addColorStop(0,   `rgba(${R},${G},${B},${.11+energy*.15+breathe*.05})`);
+  gl.addColorStop(.28, `rgba(${R},${G},${B},${.07+energy*.09+breathe*.03})`);
+  gl.addColorStop(.60, `rgba(${R2},${G2},${B2},.045)`);
+  gl.addColorStop(1,   'rgba(0,0,0,0)');
+  g.fillStyle=gl;g.fillRect(0,0,W,H);
+
+  // Every visual gets the same ambient wash and the same mute indicator; the
+  // rest of this function is the point-shell renderer, so anything else takes
+  // the branch and returns before the harmonic machinery runs.
+  if(curVis!=='sphere'&&VIS[curVis]){
+    VIS[curVis]({cx,cy,R:radius,fov:Math.min(W,H)*.92,t,
+      rx:rotX,ry:rotY,energy,bass,breathe,pulse,
+      thinking,speaking,listening,
+      r1:R,g1:G,b1:B,r2:R2,g2:G2,b2:B2});
+    if(muted&&connected){
+      g.beginPath();g.moveTo(cx-radius*.5,cy+radius*.5);g.lineTo(cx+radius*.5,cy-radius*.5);
+      g.strokeStyle='rgba(248,113,113,.8)';g.lineWidth=2.5;g.lineCap='round';g.stroke();
+    }
+    return;
+  }
+
+  /* ---------------------------------------------------------------- modes
+     Which harmonics are ringing, and how hard. Low frequencies drive low l -
+     broad, slow deformations; high frequencies drive high l - fine ripples.
+     That mapping is the physical one: a big sphere rings at a low note.      */
+  {
+    const nb=F?F.length:0;
+    for(let k=0;k<NM;k++){
+      let tgt=0;
+      if(F&&(speaking||phase==='user'||listening)){
+        // Logarithmic bands - linear ones put eleven of twelve modes in the
+        // bottom two octaves, where speech has almost no structure.
+        const lo=Math.floor(Math.pow(nb,k/NM)), hi=Math.max(lo+1,Math.floor(Math.pow(nb,(k+1)/NM)));
+        let sum=0; for(let b=lo;b<hi&&b<nb;b++)sum+=F[b];
+        tgt=sum/((hi-lo)*255)*(speaking?1.15:.95);
+        // Higher modes need more push to be seen at all - their lobes are
+        // small, so equal amplitude reads as far less movement.
+        tgt*=.50+k*.055;
+      }
+      if(thinking){
+        // She resonates through the modes in order, one handing off to the
+        // next: a 26 s sweep up the spectrum. Only ever two or three ringing
+        // at once, so the shape stays legible instead of turning to noise.
+        const sweep=(t*.46)%NM;
+        let d=k-sweep; if(d>NM/2)d-=NM; if(d<-NM/2)d+=NM;
+        tgt=Math.exp(-d*d*1.1)*.62;
+      } else if(!F||(!speaking&&!listening&&phase!=='user')){
+        // Idle: a slow drift through low modes on incommensurable periods, so
+        // it never returns to the same shape twice.
+        tgt=(k<5?.10:.03)*(.5+.5*Math.sin(t*(.13+k*.041)+k*2.1));
+      }
+      if(listening)tgt+=(k<4?.07:.02)*(.5+.5*Math.sin(t*(.11+k*.037)+k*1.7))+breathe*.03;
+      // Attack fast, release slow - a struck bell, not a light switch.
+      const e=tgt>mAmp[k]?(thinking?.10:.22):(thinking?.06:.045);
+      mAmp[k]+=(tgt-mAmp[k])*e;
+    }
+    // Bake in each mode's lobe rotation. cos(m.phi+a) = cos.cos - sin.sin
+    for(let k=0;k<NM;k++){
+      const m=MODE_M[k];
+      if(!m){mC[k]=mAmp[k];mS[k]=0;continue;}
+      const a=t*MODE_SPIN[k]*m;
+      mC[k]=mAmp[k]*Math.cos(a); mS[k]=-mAmp[k]*Math.sin(a);
+    }
+  }
+
+  const cosX=Math.cos(rotX),sinX=Math.sin(rotX);
+  const LC=new Float64Array(16), LS=new Float64Array(16);
+  for(let b=0;b<16;b++){
+    const yy=(b/15)*2-1;
+    const ang=rotY+shearPh*(1-yy*yy);
+    LC[b]=Math.cos(ang); LS[b]=Math.sin(ang);
+  }
+  for(let i=0;i<N;i++){
+    const p=pts[i], q=buf[i];
+    // Twelve multiply-adds. No trig, no branches - all the angular work was
+    // done once at startup.
+    const h=p.h; let d=0;
+    for(let k=0,j=0;k<NM;k++,j+=2) d+=mC[k]*h[j]+mS[k]*h[j+1];
+    // Soft saturation. Twelve modes at full tilt can sum past -3, and
+    // 1 + (-3)*.30 is a NEGATIVE radius - the surface turns itself inside out
+    // through the origin. d/(1+|d|k) is smooth, has unit slope near zero so
+    // quiet detail is untouched, and asymptotes to +/-1/k so loud passages
+    // compress instead of exploding.
+    const ad=d<0?-d:d;
+    const disp=d/(1+ad*.55);
+    p.amp=disp<0?-disp:disp;
+    const rr=radius*(1+disp*.34+pulse*.07);
+    const cY=LC[p.lb], sY=LS[p.lb];
+    const x=p.x*cY-p.z*sY;
+    let z=p.x*sY+p.z*cY;
+    const y=p.y*cosX-z*sinX;
+    z=p.y*sinX+z*cosX;
+    // The clamp is a backstop: a point pushed hard toward the camera by a
+    // low-order mode would otherwise take a very large scale factor.
+    let depth=FOV/(FOV+z*rr*2.15);
+    if(depth>2.9)depth=2.9;
+    q.sx=cx+x*rr*depth; q.sy=cy+y*rr*depth; q.d=depth; q.z=z; q.a=p.amp;
+    q.bv=p.bv;
+    // For body points p is on the unit sphere, so the rotated (x,y,z) IS the
+    // surface normal. Ring particles are not on that sphere, so they get flat
+    // ambient light instead of a meaningless dot product.
+    q.l=x*LX+y*LY+z*LZ;
+    // Limb: peaks where the surface turns away from the camera, i.e. on the
+    // silhouette. This is the glowing edge - it is a real optical effect, not
+    // a stroked outline, so it survives rotation and squashing.
+    q.rim=1-Math.abs(z);
+  }
+  // Rotation is slow, so the back-to-front order barely changes between frames.
+  // Re-sorting 1400 entries every frame was pure overhead; every third is
+  // indistinguishable and costs a third as much.
+  if((sortTick++ % 2)===0) order.sort((m,n)=>buf[m].z-buf[n].z);
+
+  tintOne(tintA,R,G,B); tintOne(tintB,R2,G2,B2);
+  // Additive blending: where points overlap they now accumulate into a brighter
+  // spot instead of just occluding each other, which is most of what reads as
+  // "shine". Alphas below are scaled down to compensate - with 'lighter' the
+  // old values blew out to flat white in the dense middle of the sphere.
+  g.globalCompositeOperation='lighter';
+  let hot=0;
+  for(let i=0;i<N;i++){
+    const q=buf[order[i]];
+    const front=(q.z+1)*.5;
+    // Ring particles keep their size front and back - they are lit dust, not a
+    // surface, so foreshortening them the way the body is foreshortened makes
+    // the far half of the ring vanish.
+    const sz=(0.75+q.a*(speaking?1.5:2.6)+pulse*.7)*q.d*front;
+    if(sz<.2)continue;
+    // Lambert term. Points swinging away from the light fall to 0.30 rather
+    // than 0, so the dark side stays present as silhouette instead of a hole.
+    const dif=q.l>0?q.l:0;
+    // .30+.70 dropped mean brightness to ~.48 of what it was before lighting
+    // existed. .46+.54 keeps the lit/shadow read while giving most of it back.
+    const lit=.46+.54*dif;
+    // Belts. Multiplying alpha rather than replacing it, so the bands ride on
+    // top of the lighting instead of fighting it.
+    const belt=.52+.48*q.bv;
+    // The second factor used to bottom out at .45 with nothing happening, which
+    // is what made listening almost invisible. Floor raised, and the listening
+    // breath feeds it so the whole lattice swells rather than sitting dead.
+    let al=(.22+front*.80)*lit*belt
+          *(.86+breathe*.34+q.a*(speaking?.9:1.5)+(speaking?bass:energy)*.45);
+    // Limb glow, added not multiplied - the edge should brighten past whatever
+    // the lighting gave it, which is what makes it read as glow rather than
+    // just a denser band of dots.
+    if(q.rim>.55)al+=(q.rim-.55)*(q.rim-.55)*2.9;
+    if(al>.99)al=.99;
+    if(al<.02)continue;
+    g.globalAlpha=al;
+    const d=sz*3.2;
+    // Far side takes the second colour; the sphere reads as lit from the front.
+    // Colour comes from depth AND belt, so light bands read warm and dark
+    // bands cool - the two-tone split that makes a gas giant look banded
+    // rather than merely shaded.
+    const spr=((q.z<-.02)||(q.bv<.42)?tintB:tintA).cv;
+    g.drawImage(spr,q.sx-d*.5,q.sy-d*.5,d,d);
+    // Specular pass: only the lively points near the front get a second, much
+    // smaller and brighter blit. Capped so a loud moment cannot turn this into
+    // 1400 extra draws.
+    // Smooth ramp, not a threshold: a point drifting around the cut-off used to
+    // pop its highlight on and off. w*w eases it in instead.
+    // Phong-ish: a tight lobe around the light direction. Highlights now sit in
+    // a coherent patch that slides across the surface as it turns, instead of
+    // sprinkling wherever the audio happened to be loud.
+    if(q.rim>.80&&hot<300){
+      // White along the very edge. The rim is where a real atmosphere scatters
+      // most, and it is the single detail that sells "planet" over "ball of dots".
+      hot++;
+      g.globalAlpha=Math.min(.55,(q.rim-.80)*2.4);
+      const rd=d*.30;
+      g.drawImage(spriteCv,q.sx-rd*.5,q.sy-rd*.5,rd,rd);
+    }
+    if(dif>.25&&hot<300){
+      const sp=dif*dif*dif;
+      const w=Math.min(1,sp*(.55+q.a*1.7));
+      if(w>.03){
+        hot++;
+        g.globalAlpha=w*.95;
+        const hd=d*.36;
+        g.drawImage(tintA.cv,q.sx-hd*.5,q.sy-hd*.5,hd,hd);
+        // The glint. spriteCv is the untinted white master, so the hottest
+        // points get an actual white centre rather than a more saturated
+        // version of their own colour - which is what a highlight physically
+        // is. Tiny, so it never becomes a wash.
+        if(w>.45){
+          g.globalAlpha=(w-.45)*1.5;
+          const gd=d*.16;
+          g.drawImage(spriteCv,q.sx-gd*.5,q.sy-gd*.5,gd,gd);
+        }
+      }
+    }
+  }
+  g.globalCompositeOperation='source-over';
+  g.globalAlpha=1;
+
+  // Additive, so the core reads as light coming through the sphere rather than
+  // a grey disc painted over it.
+  g.globalCompositeOperation='lighter';
+  // Was radius*.78 at up to ~0.55 intensity, lifted almost to white and added
+  // on top - which is why speaking turned into a white disc that swallowed the
+  // dots. Smaller, dimmer, hard-capped, and it keeps its hue instead of
+  // bleaching. The sphere should look lit from within, not floodlit.
+  const cr=radius*.46;
+  let ci=.10+energy*.15+bass*.05+(thinking?.09:0)+breathe*.06;
+  if(ci>.28)ci=.28;
+  const core=g.createRadialGradient(cx,cy,0,cx,cy,cr);
+  core.addColorStop(0,   `rgba(${lift([R,G,B],.16).map(v=>v|0).join(',')},${ci})`);
+  core.addColorStop(.45, `rgba(${R},${G},${B},${ci*.40})`);
+  core.addColorStop(1,   'rgba(0,0,0,0)');
+  g.fillStyle=core;g.beginPath();g.arc(cx,cy,cr,0,Math.PI*2);g.fill();
+  g.globalCompositeOperation='source-over';
+
+  // The sonar pings that used to live here fired every 1.2 s and were the
+  // "blinking". Gone. What signals listening now is the breath itself - the
+  // body swells, the light warms - plus this one soft halo drifting out every
+  // ~14 s, slow enough to read as drifting rather than pulsing.
+  if(listening){
+    const k=(t*.072)%1;
+    const rr=radius*(.80+k*1.5);
+    const hal=g.createRadialGradient(cx,cy,rr*.80,cx,cy,rr*1.16);
+    const ha=(1-k)*(1-k)*.085;
+    hal.addColorStop(0,'rgba(0,0,0,0)');
+    hal.addColorStop(.5,`rgba(${R},${G},${B},${ha})`);
+    hal.addColorStop(1,'rgba(0,0,0,0)');
+    g.globalCompositeOperation='lighter';
+    g.fillStyle=hal;g.beginPath();g.arc(cx,cy,rr*1.16,0,Math.PI*2);g.fill();
+    g.globalCompositeOperation='source-over';
+  }
+
+  // Two lone dots used to orbit out here. At this radius they read as two
+  // stray pixels far from the sphere, not as part of it. The thinking state now
+  // lives entirely in the body - travelling wavefronts, a tighter radius, a
+  // faster spin - so nothing extra is drawn.
+  // The expanding stroked ring that used to live here is gone. A 1 px hard edge
+  // sweeping outward is the least organic thing on screen and it was the only
+  // element with a visible outline; pulse now feeds the body and the core
+  // instead, which you feel rather than see.
+  if(muted&&connected){
+    g.beginPath();g.moveTo(cx-radius*.5,cy+radius*.5);g.lineTo(cx+radius*.5,cy-radius*.5);
+    g.strokeStyle='rgba(248,113,113,.8)';g.lineWidth=2.5;g.lineCap='round';g.stroke();
+  }
+}
+frame();
+
+/* -------------------------------------------------------------- input */
+async function toggle(){
+  if(busy)return;
+  if(sessions.length===0){newSession();return;}
+  if(!S().webhook){openEdit(curId,false);
+    el('f-teststate').textContent='this agent has no webhook yet';return;}
+  if(connected||ws){teardown();return;}
+  busy=true;
+  try{ U.state.textContent='allow the microphone'; await startAudio(); connect(); }
+  catch(err){ console.error(err);busy=false;U.state.textContent='microphone blocked'; }
+}
+addEventListener('pointerdown',e=>{
+  if(e.button!==0)return;
+  if(U.veil.classList.contains('show'))return;
+  if(e.target.closest('.rail,.tab,.modal,.veil'))return;   // clicks on UI are not the canvas
+  toggle();
+});
+addEventListener('keydown',e=>{
+  if(e.key==='Escape'){ if(U.veil.classList.contains('show'))closeSheet();
+    else if(connected)teardown(); return; }
+  if(e.target.tagName==='INPUT')return;
+  if(e.code==='Space'&&connected){e.preventDefault();
+    muted=!muted;micNode&&micNode.port.postMessage({kind:'enable',value:!muted});
+    U.hint.style.opacity='1';U.hint.textContent=muted?'muted':'';
+    if(!muted)setTimeout(()=>U.hint.style.opacity='0',1200);}
+});
+
+try{ loadSessions(); migrate(); }catch(err){ console.error(err);
+  sessions=[{id:'s1',title:'New',color:0,msgs:[]}];curId='s1'; }
+/* Rail slides out on hover near the left edge, or on click, and hides again. */
+let railTimer=0;
+const showRail=()=>{clearTimeout(railTimer);U.rail.classList.add('open');};
+const hideRail=()=>{railTimer=setTimeout(()=>U.rail.classList.remove('open'),500);};
+el('tab').addEventListener('pointerenter',showRail);
+el('tab').addEventListener('click',e=>{e.stopPropagation();showRail();});
+U.rail.addEventListener('pointerenter',showRail);
+U.rail.addEventListener('pointerleave',hideRail);
+el('tab').addEventListener('pointerleave',hideRail);
+
+paint();drawRail();renderChat();
+</script>
+</body>
+</html>

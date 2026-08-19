@@ -1,0 +1,140 @@
+================================================================
+  CLARA - VOICE AGENT
+  How the software is put together.
+  See architecture.svg in this folder for the picture.
+================================================================
+
+
+THE THREE PROCESSES
+-------------------
+  Everything runs on your machine. Nothing is sent anywhere.
+
+  8080   llama.cpp
+         Serves the language model over an OpenAI-compatible API.
+         The only piece you swap (utilities\set-llm.ps1).
+
+  8765   Speech pipeline  (speech-to-speech)
+         Voice activity detection, speech-to-text, text-to-speech.
+         Speaks the OpenAI Realtime protocol over a WebSocket.
+         Calls llama.cpp on 8080 for the actual reply.
+
+  8770   Web server
+         Serves ui\index.html. Plain Python http.server.
+         Exists because microphones need a secure context, and
+         127.0.0.1 counts as one while file:// does not.
+
+
+ONE SPOKEN TURN
+---------------
+  1. You talk. The browser captures the mic, applies echo
+     cancellation, resamples to 16 kHz PCM16, streams it over
+     the WebSocket.
+  2. Silero VAD + Smart Turn decide you have finished.
+  3. Parakeet TDT transcribes it.
+  4. The pipeline sends the conversation to llama.cpp on 8080.
+  5. Qwen3-TTS speaks the reply, streamed back as audio.
+  6. The browser plays it and draws the sphere from that audio.
+
+
+WHY A BROWSER AND NOT A DESKTOP APP
+-----------------------------------
+  getUserMedia gives hardware echo cancellation for free. Without
+  it the agent hears itself through your speakers and answers
+  itself. The console client cannot do that without headphones.
+  That one feature is why the interface is a web page.
+
+
+WHERE MEMORY LIVES
+------------------
+  In your browser, not on the server.
+
+  The pipeline creates a fresh chat context per WebSocket
+  connection and cannot clear it mid-connection. So history is
+  kept in browser storage and replayed as conversation items on
+  connect.
+
+  Consequence: switching session or clearing memory closes and
+  reopens the socket. That is the only way to make the server
+  forget, and it is why agents never bleed into each other.
+
+  Replay budget: 24 turns or 8000 characters, whichever is hit
+  first. Older turns stay stored but are not sent.
+
+
+THINGS THAT ARE THIS WAY FOR A REASON
+-------------------------------------
+  Model size is capped by VRAM, not preference.
+      16 GB card. Qwen3-TTS and Parakeet hold about 7 GB. A model
+      over ~5 GB starts spilling into system memory and the whole
+      computer lags. That is the ceiling.
+
+  Every model runs with --jinja.
+      Without it llama.cpp uses a generic chat template, the
+      system prompt never reaches the model, and it free-runs in
+      completion mode producing markdown essays.
+
+  Replayed history must strictly alternate user/assistant.
+      Gemma's template raises an exception otherwise. The replay
+      always opens on a user turn and closes on an assistant one,
+      because the live turn is appended after it.
+
+  Turn timing is a trade-off.
+      min_silence_ms in configs\serve-gpu.json. Too low cuts you
+      off mid-sentence, too high feels sluggish. Now 250 ms.
+
+
+WHAT WAS REMOVED
+----------------
+  A MemOS long-term memory layer once ran here: Neo4j, Qdrant, a
+  memory proxy on 8081, an embedding server on 8082, all in
+  Docker. Removed. Those ports are free.
+
+  If memory returns, keep the proxy pattern: the pipeline lets you
+  redirect its LLM endpoint, so a service between 8765 and 8080
+  can inject retrieved memories every turn without the pipeline
+  knowing anything about it.
+
+
+FOLDER LAYOUT
+-------------
+  CLARA.cmd          the menu: start, stop, check, install, model
+  HOW-TO.txt         the everyday instructions
+  README.md          background on the build
+  TROUBLESHOOTING.md longer fault guide
+
+  architecture\      this folder
+      architecture.svg
+      ARCHITECTURE.txt
+
+  ui\                the interface, one file
+      index.html
+
+  configs\           voice + turn-taking settings
+      serve-gpu.json     used by menu option 1
+      voice-gpu.json     console client, GPU
+      voice-cpu.json     console client, CPU
+
+  utilities\         every script
+      env.ps1            shared paths and helpers
+      install.ps1        one-time setup
+      set-llm.ps1        change the model
+      start-ui.ps1       what menu option 1 runs
+      start-llm.ps1      llama.cpp alone
+      start-server.ps1   pipeline alone
+      start-voice.ps1    console client
+      start-talk.ps1     mic client for a remote pipeline
+      start-all.ps1      LLM + console client
+      stop-all.ps1       what CLARA.cmd -> 4 runs
+      check.ps1          what CLARA.cmd -> 5 runs
+      remove-memory.ps1  tears down the old MemOS layer
+      uninstall.ps1      removes everything installed
+      prefetch.py        model downloader
+
+  models\            downloaded weights, ~12 GB
+  repo\              speech-to-speech source + .venv
+  tools\             uv, private Python, llama.cpp
+  logs\              llama-server.log, pipeline.log
+
+  Everything lives inside D:\local_agent. Nothing was installed
+  elsewhere. Delete the folder and it is completely gone.
+================================================================

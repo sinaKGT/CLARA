@@ -1,0 +1,79 @@
+<svg viewBox="0 0 700 580" xmlns="http://www.w3.org/2000/svg" width="700" height="580" role="img">
+<title>Clara voice agent architecture</title>
+<desc>A browser interface talks over a WebSocket to a local speech pipeline, which calls a local language model. All on localhost.</desc>
+<style>
+  .bg{fill:#0d1117}
+  .t{fill:#e6edf3;font:600 14px ui-sans-serif,system-ui,Segoe UI,Roboto,sans-serif}
+  .th{fill:#8b949e;font:600 12px ui-sans-serif,system-ui,Segoe UI,Roboto,sans-serif;letter-spacing:.08em}
+  .ts{fill:#8b949e;font:400 11.5px ui-sans-serif,system-ui,Segoe UI,Roboto,sans-serif}
+  .blue{fill:#0d2847;stroke:#378ADD;stroke-width:1}
+  .purple{fill:#1e1b3a;stroke:#7F77DD;stroke-width:1}
+  .teal{fill:#0d2b24;stroke:#1D9E75;stroke-width:1}
+  .gray{fill:#161b22;stroke:#484f58;stroke-width:1}
+  .inner{fill:#7F77DD;fill-opacity:.13;stroke:#7F77DD;stroke-opacity:.35;stroke-width:1}
+  .ln{stroke:#484f58;stroke-width:1.5;fill:none}
+  .lnb{stroke:#378ADD;stroke-width:2;fill:none}
+</style>
+<defs>
+  <marker id="ar" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto">
+    <path d="M0 1.5 L8 4.5 L0 7.5 z" fill="#484f58"/></marker>
+  <marker id="arb" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto">
+    <path d="M0 1.5 L8 4.5 L0 7.5 z" fill="#378ADD"/></marker>
+</defs>
+
+<rect class="bg" x="0" y="0" width="700" height="580"/>
+<text class="th" x="20" y="26">CLARA — VOICE AGENT · everything runs on your machine</text>
+
+<rect class="blue" x="20" y="48" width="300" height="88" rx="8"/>
+<text class="t"  x="36" y="72">Browser interface</text>
+<text class="ts" x="36" y="90">ui\index.html · port 8770</text>
+<text class="ts" x="36" y="107">mic, speakers, echo cancellation</text>
+<text class="ts" x="36" y="124">sphere, sessions, settings</text>
+
+<rect class="gray" x="360" y="48" width="180" height="88" rx="8"/>
+<text class="t"  x="376" y="72">Browser storage</text>
+<text class="ts" x="376" y="90">sessions and history</text>
+<text class="ts" x="376" y="107">name, prompt, voice</text>
+<text class="ts" x="376" y="124">colours, memory</text>
+<path class="ln" d="M320 92 L358 92" marker-end="url(#ar)"/>
+
+<rect class="purple" x="20" y="186" width="520" height="152" rx="8"/>
+<text class="t"  x="36" y="210">Speech pipeline — port 8765</text>
+<text class="ts" x="36" y="228">speech-to-speech · OpenAI Realtime protocol over WebSocket</text>
+<rect class="inner" x="40"  y="246" width="108" height="70" rx="6"/>
+<text class="ts" x="94"  y="268" text-anchor="middle">Silero VAD</text>
+<text class="ts" x="94"  y="284" text-anchor="middle">Smart Turn</text>
+<text class="ts" x="94"  y="302" text-anchor="middle">when you stop</text>
+<rect class="inner" x="164" y="246" width="108" height="70" rx="6"/>
+<text class="ts" x="218" y="268" text-anchor="middle">Parakeet TDT</text>
+<text class="ts" x="218" y="284" text-anchor="middle">0.6B</text>
+<text class="ts" x="218" y="302" text-anchor="middle">speech to text</text>
+<rect class="inner" x="288" y="246" width="108" height="70" rx="6"/>
+<text class="ts" x="342" y="268" text-anchor="middle">Qwen3-TTS</text>
+<text class="ts" x="342" y="284" text-anchor="middle">1.7B</text>
+<text class="ts" x="342" y="302" text-anchor="middle">text to speech</text>
+<rect class="inner" x="412" y="246" width="108" height="70" rx="6"/>
+<text class="ts" x="466" y="268" text-anchor="middle">chat context</text>
+<text class="ts" x="466" y="284" text-anchor="middle">per connection</text>
+<text class="ts" x="466" y="302" text-anchor="middle">reset on switch</text>
+
+<path class="lnb" d="M120 136 L120 184" marker-end="url(#arb)"/>
+<text class="ts" x="130" y="164">audio in, audio out</text>
+
+<rect class="teal" x="20" y="388" width="300" height="78" rx="8"/>
+<text class="t"  x="36" y="412">Language model — port 8080</text>
+<text class="ts" x="36" y="430">llama.cpp serving Gemma or Granite</text>
+<text class="ts" x="36" y="447">the only part you swap</text>
+
+<rect class="gray" x="360" y="388" width="180" height="78" rx="8"/>
+<text class="t"  x="376" y="412">Launchers</text>
+<text class="ts" x="376" y="430">START · STOP · CHECK</text>
+<text class="ts" x="376" y="447">utilities\ has the rest</text>
+
+<path class="ln" d="M120 338 L120 386" marker-end="url(#ar)"/>
+<text class="ts" x="130" y="366">the reply, as text</text>
+
+<text class="ts" x="20" y="506">One turn: you speak, VAD decides you finished, Parakeet transcribes,</text>
+<text class="ts" x="20" y="523">the model writes the reply, Qwen3-TTS speaks it, your speakers play it.</text>
+<text class="ts" x="20" y="552">Blue = browser · Purple = pipeline · Teal = model · Grey = state and tooling</text>
+</svg>

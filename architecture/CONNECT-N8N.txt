@@ -1,0 +1,92 @@
+================================================================
+  CREATE AN AGENT
+================================================================
+
+  An agent = one n8n workflow + one entry in the voice panel.
+  No config files. The router on 8090 handles the wiring.
+
+
+IN n8n  (http://127.0.0.1:5679)
+-------------------------------
+  1  New workflow. Add these nodes:
+
+     WEBHOOK
+        Method   POST
+        Path     anything, e.g.  my-agent
+        Respond  Using 'Respond to Webhook' node
+
+     AI AGENT
+        Prompt:
+        ={{ $json.body.messages.filter(m=>m.role==='user').pop().content }}
+
+        Chat Model -> OLLAMA CHAT MODEL
+           Base URL  http://host.docker.internal:11434
+           Model     whatever you have pulled
+
+        Memory -> POSTGRES CHAT MEMORY
+           Host clara-postgres   Port 5432   DB agents
+           User clara            Password clara
+           Session key: any fixed name, e.g.  my-agent
+
+     RESPOND TO WEBHOOK
+        Respond With  JSON
+        Body:         { "output": "={{ $json.output }}" }
+
+  2  Save, then switch the workflow to ACTIVE.
+  3  Copy the webhook's PRODUCTION url.
+
+
+IN THE VOICE PANEL  (http://127.0.0.1:8770)
+-------------------------------------------
+  4  Click "Connect to n8n" (first time) or + on the left rail.
+  5  Name the agent, paste the production url, pick voice and
+     colours.
+  6  Press TEST. The reply from your workflow appears - that is
+     the exact path a spoken turn takes.
+  7  Create. Click anywhere and talk.
+
+
+NOTES
+-----
+  localhost inside n8n means the n8n container itself.
+    Ollama    http://host.docker.internal:11434   (desktop app)
+    Postgres  clara-postgres  port 5432           (container)
+
+  Ollama desktop only listens on 127.0.0.1 by default, so
+  containers cannot reach it. In Windows environment variables
+  add  OLLAMA_HOST = 0.0.0.0  and restart Ollama. Without this
+  the Chat Model node gets a connection refused.
+
+  The Test url only works while the editor is listening.
+  Always paste the PRODUCTION url.
+
+  Every agent can point at a different workflow. Switching
+  agents in the panel switches workflows instantly.
+
+  The workflow's reply can be {"output": "..."} as above, a full
+  OpenAI response, or a stream - the router accepts all three.
+================================================================
+
+  WHAT THE ROUTER SENDS YOU
+  -------------------------
+  Always exactly two messages, at fixed indexes, every turn:
+
+    {"sessionId": "s1a2b3",
+     "messages": [
+       {"role":"system","content":"<the agent's prompt>"},
+       {"role":"user",  "content":"<what was just said>"}
+     ]}
+
+  So in the AI AGENT node:
+
+    Prompt (User Message)   {{ $json.body.messages[1].content }}
+    Options > System Msg    {{ $json.body.messages[0].content }}
+
+  and in POSTGRES CHAT MEMORY:
+
+    Session Key             {{ $json.body.sessionId }}
+    Session ID              Define below
+
+  n8n owns the history. The browser never sends it - one agent, one
+  sessionId, one row set in Postgres. Do not add history to the prompt
+  yourself or the model sees the conversation twice.

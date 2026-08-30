@@ -18,16 +18,16 @@ $targets = @($ToolsDir, $RepoDir, $LogsDir, $StateFile)
 if (-not $KeepModels) { $targets += $ModelsDir }
 
 Write-Step 'About to delete'
-foreach ($t in $targets) { if (Test-Path $t) { Write-Info $t } }
+foreach ($t in $targets) { if (Test-Path -LiteralPath $t) { Write-Info $t } }
 if ($KeepModels) { Write-Info "(keeping $ModelsDir)" }
 
 $answer = Read-Host "`nType 'yes' to continue"
 if ($answer -ne 'yes') { Write-Info 'Cancelled.'; exit 0 }
 
 foreach ($t in $targets) {
-    if (Test-Path $t) {
-        Remove-Item $t -Recurse -Force -ErrorAction SilentlyContinue
-        if (Test-Path $t) { Write-Warn2 "could not fully remove $t (a process may still have it open)" }
+    if (Test-Path -LiteralPath $t) {
+        Remove-Item -LiteralPath $t -Recurse -Force -ErrorAction SilentlyContinue
+        if (Test-Path -LiteralPath $t) { Write-Warn2 "could not fully remove $t (a process may still have it open)" }
         else { Write-Ok "removed $t" }
     }
 }

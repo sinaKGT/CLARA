@@ -115,7 +115,7 @@ if ($gpu.HasNvidia -and -not $ForceCpu) {
     Write-Warn2 'No NVIDIA GPU detected - installing CPU builds. Expect several seconds of latency per reply.'
 }
 
-foreach ($d in @($ToolsDir, $ModelsDir, $LogsDir)) { New-Item -ItemType Directory -Force -Path $d | Out-Null }
+foreach ($d in @($ToolsDir, $ModelsDir, $LogsDir)) { [System.IO.Directory]::CreateDirectory($d) | Out-Null }
 
 # --- the CUDA PyTorch swap, shared by the full install and -CudaOnly ---------
 # PyPI ships CPU-only torch wheels for Windows (~120 MB). The CUDA builds live on
@@ -157,7 +157,7 @@ function Install-TorchForGpu {
 # replaced instead of silently kept - which is how a CPU llama.cpp survived on a
 # machine with a 5080.
 function Test-LlamaIsCuda {
-    return (Test-Path (Join-Path $LlamaDir 'ggml-cuda.dll'))
+    return (Test-Path -LiteralPath (Join-Path $LlamaDir 'ggml-cuda.dll'))
 }
 
 function Install-LlamaCpp {
@@ -168,7 +168,7 @@ function Install-LlamaCpp {
 
     Write-Step "llama.cpp server ($Flavor build)"
 
-    $haveExe  = Test-Path $LlamaExe
+    $haveExe  = Test-Path -LiteralPath $LlamaExe
     $haveCuda = Test-LlamaIsCuda
     $wantCuda = $Flavor -ne 'cpu'
 
@@ -180,7 +180,7 @@ function Install-LlamaCpp {
         Write-Warn2 "installed build is $(if($haveCuda){'CUDA'}else{'CPU'}) but $(if($wantCuda){'CUDA'}else{'CPU'}) is wanted - replacing it"
     }
 
-    New-Item -ItemType Directory -Force -Path $LlamaDir | Out-Null
+    [System.IO.Directory]::CreateDirectory($LlamaDir) | Out-Null
     $headers  = @{ 'User-Agent' = 'speech-to-speech-setup' }
     try {
         $releases = Invoke-RestMethod -Uri 'https://api.github.com/repos/ggml-org/llama.cpp/releases?per_page=12' `
@@ -213,24 +213,24 @@ function Install-LlamaCpp {
     Write-Info "release $($picked.Tag)  |  $($picked.Main.name)"
     $z1 = Join-Path $TempDir $picked.Main.name
     Invoke-WebRequest -Uri $picked.Main.browser_download_url -OutFile $z1 -UseBasicParsing
-    Expand-Archive -Path $z1 -DestinationPath $LlamaDir -Force
-    Remove-Item $z1 -Force
+    Expand-Archive -LiteralPath $z1 -DestinationPath $LlamaDir -Force
+    Remove-Item -LiteralPath $z1 -Force
 
     if ($picked.Runtime) {
         Write-Info "CUDA runtime: $($picked.Runtime.name)"
         $z2 = Join-Path $TempDir $picked.Runtime.name
         Invoke-WebRequest -Uri $picked.Runtime.browser_download_url -OutFile $z2 -UseBasicParsing
-        Expand-Archive -Path $z2 -DestinationPath $LlamaDir -Force
-        Remove-Item $z2 -Force
+        Expand-Archive -LiteralPath $z2 -DestinationPath $LlamaDir -Force
+        Remove-Item -LiteralPath $z2 -Force
     }
 
     # Some archives nest a level deep; flatten so llama-server.exe sits at the root.
-    if (-not (Test-Path $LlamaExe)) {
-        $found = Get-ChildItem $LlamaDir -Recurse -Filter 'llama-server.exe' | Select-Object -First 1
-        if ($found) { Get-ChildItem $found.DirectoryName | Move-Item -Destination $LlamaDir -Force -ErrorAction SilentlyContinue }
+    if (-not (Test-Path -LiteralPath $LlamaExe)) {
+        $found = Get-ChildItem -LiteralPath $LlamaDir -Recurse -Filter 'llama-server.exe' | Select-Object -First 1
+        if ($found) { Get-ChildItem -LiteralPath $found.DirectoryName | Move-Item -Destination $LlamaDir -Force -ErrorAction SilentlyContinue }
     }
 
-    if (-not (Test-Path $LlamaExe)) {
+    if (-not (Test-Path -LiteralPath $LlamaExe)) {
         Write-Warn2 'llama-server.exe not found after extraction - check tools\llama.cpp'
         return $false
     }
@@ -259,7 +259,7 @@ if ($LlamaOnly) {
 
 # --- -CudaOnly: repair an existing install without redoing everything --------
 if ($CudaOnly) {
-    if (-not (Test-Path $VenvPython)) {
+    if (-not (Test-Path -LiteralPath $VenvPython)) {
         Write-Bad 'No virtual environment yet - run install.ps1 without -CudaOnly first.'
         exit 1
     }
@@ -282,17 +282,17 @@ if ($CudaOnly) {
 
 # ---------------------------------------------------------------------- uv
 Write-Step 'Installing uv (into this folder only)'
-if (Test-Path $UvExe) {
+if (Test-Path -LiteralPath $UvExe) {
     Write-Ok "already present: $(& $UvExe --version)"
 } else {
     $uvZip = Join-Path $TempDir 'uv-win.zip'
     $uvUrl = 'https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-pc-windows-msvc.zip'
     Write-Info "downloading $uvUrl"
     Invoke-WebRequest -Uri $uvUrl -OutFile $uvZip -UseBasicParsing
-    New-Item -ItemType Directory -Force -Path $UvDir | Out-Null
-    Expand-Archive -Path $uvZip -DestinationPath $UvDir -Force
-    Remove-Item $uvZip -Force
-    if (-not (Test-Path $UvExe)) { Write-Bad 'uv.exe not found after extraction.'; exit 1 }
+    [System.IO.Directory]::CreateDirectory($UvDir) | Out-Null
+    Expand-Archive -LiteralPath $uvZip -DestinationPath $UvDir -Force
+    Remove-Item -LiteralPath $uvZip -Force
+    if (-not (Test-Path -LiteralPath $UvExe)) { Write-Bad 'uv.exe not found after extraction.'; exit 1 }
     Write-Ok "installed: $(& $UvExe --version)"
 }
 
@@ -307,7 +307,7 @@ $pin          = Get-UpstreamPin
 $UpstreamRef  = $pin.ref
 $UpstreamRepo = $pin.repo
 Write-Step "Fetching the speech-to-speech source ($UpstreamRef)"
-if (Test-Path (Join-Path $RepoDir 'pyproject.toml')) {
+if (Test-Path -LiteralPath (Join-Path $RepoDir 'pyproject.toml')) {
     Write-Ok 'source already present in repo\'
 } else {
     $git = Get-Command git -ErrorAction SilentlyContinue
@@ -320,12 +320,12 @@ if (Test-Path (Join-Path $RepoDir 'pyproject.toml')) {
         $srcZip = Join-Path $TempDir 's2s-src.zip'
         Invoke-WebRequest -Uri "https://codeload.github.com/huggingface/speech-to-speech/zip/refs/tags/$UpstreamRef" -OutFile $srcZip -UseBasicParsing
         $tmpDir = Join-Path $TempDir 's2s-src'
-        if (Test-Path $tmpDir) { Remove-Item $tmpDir -Recurse -Force }
-        Expand-Archive -Path $srcZip -DestinationPath $tmpDir -Force
+        if (Test-Path -LiteralPath $tmpDir) { Remove-Item -LiteralPath $tmpDir -Recurse -Force }
+        Expand-Archive -LiteralPath $srcZip -DestinationPath $tmpDir -Force
         # GitHub names the folder after the tag without its leading v
-        $extracted = Get-ChildItem $tmpDir -Directory | Select-Object -First 1
-        Move-Item $extracted.FullName $RepoDir
-        Remove-Item $srcZip, $tmpDir -Recurse -Force -ErrorAction SilentlyContinue
+        $extracted = Get-ChildItem -LiteralPath $tmpDir -Directory | Select-Object -First 1
+        Move-Item -LiteralPath $extracted.FullName -Destination $RepoDir
+        Remove-Item -LiteralPath $srcZip, $tmpDir -Recurse -Force -ErrorAction SilentlyContinue
         Write-Ok 'source archive extracted to repo\'
     }
 }
@@ -333,7 +333,7 @@ if (Test-Path (Join-Path $RepoDir 'pyproject.toml')) {
 # -------------------------------------------------------------------- venv
 Write-Step 'Creating the isolated virtual environment and installing dependencies'
 Write-Info 'This is the long step (~2 GB of wheels). Grab a coffee.'
-Push-Location $RepoDir
+Push-Location -LiteralPath $RepoDir
 try {
     # --allow-existing reuses a venv that is already there instead of stopping to
     # ask. Without it a re-run prompts, and declining makes uv exit non-zero,

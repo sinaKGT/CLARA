@@ -23,19 +23,19 @@ Write-Host "  $Kit" -ForegroundColor DarkGray
 
 # ------------------------------------------------------------------- layout
 Write-Step 'Files'
-Chk  (Test-Path $UvExe)                              "uv                 tools\uv\uv.exe"
-Chk  (Test-Path (Join-Path $RepoDir 'pyproject.toml')) "source             repo\"
-Chk  (Test-Path $VenvPython)                         "python             repo\.venv\Scripts\python.exe"
-Chk  (Test-Path $S2SExe)                             "cli                repo\.venv\Scripts\speech-to-speech.exe"
-Soft (Test-Path $LlamaExe)                           "llama-server       tools\llama.cpp\llama-server.exe"
-Chk  (Test-Path $StateFile)                          "state              system.json"
+Chk  (Test-Path -LiteralPath $UvExe)                              "uv                 tools\uv\uv.exe"
+Chk  (Test-Path -LiteralPath (Join-Path $RepoDir 'pyproject.toml')) "source             repo\"
+Chk  (Test-Path -LiteralPath $VenvPython)                         "python             repo\.venv\Scripts\python.exe"
+Chk  (Test-Path -LiteralPath $S2SExe)                             "cli                repo\.venv\Scripts\speech-to-speech.exe"
+Soft (Test-Path -LiteralPath $LlamaExe)                           "llama-server       tools\llama.cpp\llama-server.exe"
+Chk  (Test-Path -LiteralPath $StateFile)                          "state              system.json"
 
 $state = Get-KitState
 if ($state) {
     Write-Info "installed $($state.installedAt)  |  device $($state.device)  |  torch $($state.torchIndex)  |  quant $($state.quant)"
 }
 
-if (-not (Test-Path $VenvPython)) {
+if (-not (Test-Path -LiteralPath $VenvPython)) {
     Write-Host ''
     Write-Bad 'The virtual environment is missing. Run install.ps1.'
     exit 1
@@ -59,8 +59,18 @@ Soft ($ram -ge 16) "system RAM $ram GB (16 GB+ recommended)"
 
 # --------------------------------------------------------------- python env
 Write-Step 'Python environment'
-$pyver = (& $VenvPython -c "import sys;print('.'.join(map(str,sys.version_info[:3])))" 2>$null)
-Chk ($LASTEXITCODE -eq 0) "interpreter runs: Python $pyver"
+$relocated = Get-RelocatedVenvRoot
+if ($relocated) {
+    Write-Bad 'the environment was built for a different folder and cannot run'
+    Write-Info "   built for : $relocated"
+    Write-Info "   now at    : $Kit"
+    Write-Info '   a venv stores absolute paths, so moving or renaming the folder breaks it'
+    Write-Info '   fix: delete repo\.venv, then CLARA.cmd -> 5 -> 2'
+    $fail++
+} else {
+    $pyver = (& $VenvPython -c "import sys;print('.'.join(map(str,sys.version_info[:3])))" 2>$null)
+    Chk ($LASTEXITCODE -eq 0) "interpreter runs: Python $pyver"
+}
 
 $probe = @'
 import json, importlib
@@ -85,7 +95,7 @@ print(json.dumps(out))
 $probeFile = Join-Path $TempDir 's2s-probe.py'
 Write-Utf8NoBom -Path $probeFile -Content $probe
 $raw = & $VenvPython $probeFile 2>$null | Select-Object -Last 1
-Remove-Item $probeFile -Force -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath $probeFile -Force -ErrorAction SilentlyContinue
 
 if (-not $raw) {
     Write-Bad 'Could not import anything in the venv - the install is broken. Re-run install.ps1.'
@@ -111,14 +121,14 @@ if ($p.onnxruntime -ne $true) { Write-Info 'onnxruntime missing: Smart Turn will
 # ------------------------------------------------------------------- models
 Write-Step 'Model cache'
 $hub = Join-Path $ModelsDir 'hub'
-function HasModel { param([string]$pattern) (Test-Path $hub) -and ((Get-ChildItem $hub -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -like $pattern }).Count -gt 0) }
+function HasModel { param([string]$pattern) (Test-Path -LiteralPath $hub) -and ((Get-ChildItem -LiteralPath $hub -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -like $pattern }).Count -gt 0) }
 Soft (HasModel 'models--ggml-org--gemma-4*')  'Gemma 4 E4B GGUF   (LLM)'
 Soft (HasModel 'models--Qwen--Qwen3-TTS*')    'Qwen3-TTS          (speech output)'
 Soft (HasModel 'models--nvidia--parakeet*')   'Parakeet TDT       (speech recognition)'
 Soft (HasModel 'models--pipecat-ai--smart*')  'Smart Turn v3.2    (turn detection)'
-Soft (Test-Path (Join-Path $ModelsDir 'torch\hub')) 'Silero VAD         (voice activity)'
-if (Test-Path $ModelsDir) {
-    $sz = [math]::Round((Get-ChildItem $ModelsDir -Recurse -File -ErrorAction SilentlyContinue |
+Soft (Test-Path -LiteralPath (Join-Path $ModelsDir 'torch\hub')) 'Silero VAD         (voice activity)'
+if (Test-Path -LiteralPath $ModelsDir) {
+    $sz = [math]::Round((Get-ChildItem -LiteralPath $ModelsDir -Recurse -File -ErrorAction SilentlyContinue |
           Measure-Object Length -Sum).Sum / 1GB, 2)
     Write-Info "models\ is $sz GB"
 }
@@ -151,7 +161,7 @@ try {
     $dev = $null
 } finally {
     $ErrorActionPreference = 'Stop'
-    Remove-Item $audioFile -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $audioFile -Force -ErrorAction SilentlyContinue
 }
 
 $inLine  = $dev | Where-Object { $_ -is [string] -and $_ -like 'in=*' }  | Select-Object -First 1
@@ -172,6 +182,23 @@ if ($state) {
     $lp = [int]$state.llamaPort; $vp = [int]$state.voicePort
     if (Test-PortFree -Port $lp) { Write-Info "port $lp free  - LLM not running" }      else { Write-Ok "port $lp in use - LLM is running" }
     if (Test-PortFree -Port $vp) { Write-Info "port $vp free  - pipeline not running" } else { Write-Ok "port $vp in use - pipeline is running" }
+}
+
+# --------------------------------------------------------------- path safety
+# CLARA once failed to start only because its folder was named "2. CLARA".
+# This proves the launch path survives spaces, brackets and non-ASCII names.
+Write-Step 'Path handling'
+$selftest = Join-Path $ScriptDir 'selftest.ps1'
+if (Test-Path -LiteralPath $selftest) {
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $selftest | Out-Null
+    if ($LASTEXITCODE -eq 0) {
+        Write-Ok 'runs correctly from awkward folder names (.\utilities\selftest.ps1 for detail)'
+    } else {
+        Write-Bad 'this kit does NOT run reliably from its current path - .\utilities\selftest.ps1'
+        $fail++
+    }
+} else {
+    Write-Info 'selftest.ps1 not present - skipped'
 }
 
 # ------------------------------------------------------------------ summary

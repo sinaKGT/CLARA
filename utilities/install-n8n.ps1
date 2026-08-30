@@ -46,10 +46,10 @@ $engineUp = ($LASTEXITCODE -eq 0)
 $ErrorActionPreference = $prev
 if (-not $engineUp) { Write-Bad 'Docker is installed but the engine is not running. Start Docker Desktop.'; exit 1 }
 Write-Ok "docker ready: $(& docker --version)"
-if (-not (Test-Path $Compose)) { Write-Bad "missing $Compose"; exit 1 }
+if (-not (Test-Path -LiteralPath $Compose)) { Write-Bad "missing $Compose"; exit 1 }
 
 foreach ($d in 'data','ollama','postgres','files','backups') {
-    New-Item -ItemType Directory -Force -Path (Join-Path $N8nDir $d) | Out-Null
+    [System.IO.Directory]::CreateDirectory((Join-Path $N8nDir $d)) | Out-Null
 }
 Write-Ok 'n8n\{data, ollama, postgres, files, backups} ready'
 
@@ -69,7 +69,7 @@ foreach ($p in @($Port, $PgPort)) {
 # generated once and never regenerated.
 $envFile = Join-Path $N8nDir '.env'
 $key = $null
-if (Test-Path $envFile) {
+if (Test-Path -LiteralPath $envFile) {
     $m = Select-String -Path $envFile -Pattern '^N8N_ENCRYPTION_KEY=(.+)$'
     if ($m) { $key = $m.Matches[0].Groups[1].Value }
 }
@@ -90,7 +90,7 @@ $args = @('compose','-f',$Compose)
 
 Write-Step 'Pulling images'
 Write-Info 'n8n ~360 MB, ollama ~600 MB, postgres ~80 MB'
-Push-Location $N8nDir
+Push-Location -LiteralPath $N8nDir
 try {
     Invoke-Native -FilePath 'docker' -Arguments ($args + @('pull'))
     Write-Step 'Starting the stack'
@@ -109,7 +109,7 @@ for ($i = 0; $i -lt 30; $i++) {
     if ($rc -eq 0) { $ok = $true; break }
 }
 $pgdata = Join-Path $N8nDir 'postgres\pgdata'
-if ($ok -and (Test-Path (Join-Path $pgdata 'PG_VERSION'))) {
+if ($ok -and (Test-Path -LiteralPath (Join-Path $pgdata 'PG_VERSION'))) {
     Write-Ok "Postgres is live and its data is in n8n\postgres\pgdata (portable)"
 } elseif ($ok) {
     Write-Warn2 'Postgres answers but n8n\postgres\pgdata looks empty - data may not be on the host.'

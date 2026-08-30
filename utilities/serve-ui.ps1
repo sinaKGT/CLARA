@@ -13,7 +13,7 @@ param([int]$Port = 8770)
 . "$PSScriptRoot\env.ps1"
 
 $uiDir = Join-Path $Kit 'ui'
-if (-not (Test-Path (Join-Path $uiDir 'index.html'))) { Write-Bad "ui\index.html missing"; exit 1 }
+if (-not (Test-Path -LiteralPath (Join-Path $uiDir 'index.html'))) { Write-Bad "ui\index.html missing"; exit 1 }
 
 Invoke-Native -FilePath $VenvPython -Arguments @(
     '-m','http.server',"$Port",'--bind','127.0.0.1','--directory',$uiDir

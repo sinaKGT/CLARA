@@ -9,7 +9,7 @@ param()
 
 function Run($script, $arguments = @()) {
     $path = Join-Path $ScriptDir $script
-    if (-not (Test-Path $path)) { Write-Bad "missing utilities\$script"; return }
+    if (-not (Test-Path -LiteralPath $path)) { Write-Bad "missing utilities\$script"; return }
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $path @arguments
 }
 function Pause2 { Write-Host ''; Write-Host '  enter to go back ' -ForegroundColor DarkGray -NoNewline; [void](Read-Host) }
@@ -70,10 +70,12 @@ while ($true) {
         }
         '6' {
             Write-Host ''
-            if (Test-Path $LogsDir) {
-                Get-ChildItem $LogsDir -Filter *.log | Sort-Object LastWriteTime -Descending | Select-Object -First 8 |
+            if (Test-Path -LiteralPath $LogsDir) {
+                Get-ChildItem -LiteralPath $LogsDir -Filter *.log | Sort-Object LastWriteTime -Descending | Select-Object -First 8 |
                     ForEach-Object { Write-Host ('   {0,-24} {1,7:N0} KB  {2}' -f $_.Name, ($_.Length/1KB), $_.LastWriteTime.ToString('HH:mm')) -ForegroundColor Gray }
-                Start-Process explorer $LogsDir
+                # Quoted: the positional arg is -ArgumentList, one raw command
+                # line, so a kit path like "D:\2. CLARA" would split at the space.
+                Start-Process explorer -ArgumentList ('"{0}"' -f $LogsDir)
             } else { Write-Info 'no logs yet' }
             Pause2
         }

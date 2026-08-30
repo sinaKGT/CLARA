@@ -83,7 +83,7 @@ if (-not $NoDocker) {
         # sends SIGTERM and waits, in reverse dependency order. Killing Postgres
         # instead of stopping it risks an unclean shutdown of the agent memory.
         $compose = Join-Path $Kit 'n8n\docker-compose.yml'
-        if (Test-Path $compose) {
+        if (Test-Path -LiteralPath $compose) {
             if ($Remove) {
                 Write-Info 'docker compose down (containers removed, data kept)'
                 & docker compose -f $compose down 2>&1 | ForEach-Object { Write-Info $_ }
@@ -106,7 +106,7 @@ if (-not $NoDocker) {
             if ($Remove) { & docker rm -v $c 2>&1 | Out-Null; Write-Ok "removed $c" }
             $stopped++
         }
-        if (-not $stragglers -and -not (Test-Path $compose)) {
+        if (-not $stragglers -and -not (Test-Path -LiteralPath $compose)) {
             Write-Info 'none of this system''s containers are running'
         }
         $ErrorActionPreference = $prev

@@ -40,7 +40,7 @@ $TempDir = if ($env:TEMP) { $env:TEMP }
            elseif ($env:TMP) { $env:TMP }
            else { [System.IO.Path]::GetTempPath() }
 if ([string]::IsNullOrWhiteSpace($TempDir)) { $TempDir = Join-Path $Kit 'tmp' }
-if (-not (Test-Path $TempDir)) { New-Item -ItemType Directory -Force -Path $TempDir | Out-Null }
+if (-not (Test-Path -LiteralPath $TempDir)) { [System.IO.Directory]::CreateDirectory($TempDir) | Out-Null }
 
 # --- keep every cache inside the kit ---------------------------------------
 $env:UV_PYTHON_INSTALL_DIR = Join-Path $ToolsDir 'python'
@@ -111,7 +111,7 @@ function Get-GpuInfo {
     } elseif ($env:SystemRoot) {
         # Driver installs drop nvidia-smi.exe here even when it is not on PATH.
         $fallback = Join-Path $env:SystemRoot 'System32\nvidia-smi.exe'
-        if (Test-Path $fallback) { $exe = $fallback }
+        if (Test-Path -LiteralPath $fallback) { $exe = $fallback }
     }
     if (-not $exe) { return $info }
 
@@ -190,9 +190,9 @@ function Get-UpstreamPin {
         repo = 'https://github.com/huggingface/speech-to-speech.git'
         ref  = 'v0.2.12'
     }
-    if (-not (Test-Path $UpstreamFile)) { return $fallback }
+    if (-not (Test-Path -LiteralPath $UpstreamFile)) { return $fallback }
     try {
-        $j = Get-Content $UpstreamFile -Raw | ConvertFrom-Json
+        $j = Get-Content -LiteralPath $UpstreamFile -Raw | ConvertFrom-Json
         if (-not $j.ref)  { $j | Add-Member -NotePropertyName ref  -NotePropertyValue $fallback.ref  -Force }
         if (-not $j.repo) { $j | Add-Member -NotePropertyName repo -NotePropertyValue $fallback.repo -Force }
         return $j
@@ -202,9 +202,9 @@ function Get-UpstreamPin {
 function Get-KitState {
     # Tolerates a missing, empty or half-written system.json (interrupted install)
     # rather than throwing an opaque JSON error at the caller.
-    if (-not (Test-Path $StateFile)) { return $null }
+    if (-not (Test-Path -LiteralPath $StateFile)) { return $null }
     try {
-        $raw = Get-Content $StateFile -Raw
+        $raw = Get-Content -LiteralPath $StateFile -Raw
         if ([string]::IsNullOrWhiteSpace($raw)) { return $null }
         return ($raw | ConvertFrom-Json)
     } catch {
@@ -213,8 +213,25 @@ function Get-KitState {
     }
 }
 
+# A virtualenv records an ABSOLUTE path to its base interpreter in
+# pyvenv.cfg, and uv additionally bakes the venv path into every
+# Scripts\*.exe shim. So renaming or moving the kit folder silently breaks
+# the environment, and the symptom is the opaque
+#     "uv trampoline failed to spawn Python child process"
+# Returns the stale path if the venv belongs to a different folder, else $null.
+function Get-RelocatedVenvRoot {
+    $cfg = Join-Path $RepoDir '.venv\pyvenv.cfg'
+    if (-not (Test-Path -LiteralPath $cfg)) { return $null }
+    $line = Get-Content -LiteralPath $cfg | Where-Object { $_ -match '^\s*home\s*=' } | Select-Object -First 1
+    if (-not $line) { return $null }
+    $venvHome = ($line -replace '^\s*home\s*=\s*', '').Trim()
+    if (-not $venvHome) { return $null }
+    if ($venvHome.StartsWith($Kit, [StringComparison]::OrdinalIgnoreCase)) { return $null }
+    return $venvHome
+}
+
 function Assert-Installed {
-    if (-not (Test-Path $S2SExe)) {
+    if (-not (Test-Path -LiteralPath $S2SExe)) {
         Write-Bad 'Not installed yet. Run this first:'
         Write-Host "        powershell -ExecutionPolicy Bypass -File `"$ScriptDir\install.ps1`"" -ForegroundColor White
         exit 1
@@ -303,7 +320,7 @@ function Start-BackgroundService {
         [string]$Shell = 'powershell.exe'
     )
 
-    New-Item -ItemType Directory -Force -Path $LogsDir | Out-Null
+    [System.IO.Directory]::CreateDirectory($LogsDir) | Out-Null
     # llama.cpp and Python logging both write to stderr, so stderr is the log that
     # matters. Give it the obvious name and park stdout in the secondary file,
     # otherwise the interesting output hides in something called ".err.log".
@@ -323,7 +340,14 @@ function Start-BackgroundService {
     # elsewhere makes the child exit immediately with 'not implemented on this platform'.
     $psArgs = @('-NoProfile','-ExecutionPolicy','Bypass')
     if ($IsWindows -ne $false) { $psArgs += @('-WindowStyle','Hidden') }
-    $psArgs += @('-File', $Script) + $Arguments
+    # Start-Process -ArgumentList is flattened into ONE raw command line, and it
+    # does NOT quote elements for you. The kit can live at a path with a space
+    # in it - "D:\2. CLARA" - and powershell.exe then parses -File as "D:\2."
+    # and refuses it for not ending in .ps1. Quote anything containing a space.
+    $psArgs += @('-File', ('"{0}"' -f $Script))
+    foreach ($a in $Arguments) {
+        $psArgs += $(if ($a -match '\s') { '"{0}"' -f $a } else { $a })
+    }
     $sp = @{
         FilePath               = $Shell
         ArgumentList           = $psArgs

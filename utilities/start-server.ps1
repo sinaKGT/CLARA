@@ -28,12 +28,12 @@ if ($state) {
     if (-not (Assert-PortAvailable -Port ([int]$state.voicePort) -Label 'Realtime server' `
               -Force:$Force -ScriptHint '.\start-server.ps1')) { exit 1 }
 }
-$cfgPath = if (Test-Path $Config) { (Resolve-Path $Config).Path } else { Join-Path $ConfigDir $Config }
-if (-not (Test-Path $cfgPath)) { Write-Bad "Config not found: $cfgPath"; exit 1 }
+$cfgPath = if (Test-Path -LiteralPath $Config) { (Resolve-Path -LiteralPath $Config).Path } else { Join-Path $ConfigDir $Config }
+if (-not (Test-Path -LiteralPath $cfgPath)) { Write-Bad "Config not found: $cfgPath"; exit 1 }
 
 if ($Lan) {
     $tmp = Join-Path $TempDir ("s2s-" + [guid]::NewGuid().ToString('N') + '.json')
-    $obj = Get-Content $cfgPath -Raw | ConvertFrom-Json
+    $obj = Get-Content -LiteralPath $cfgPath -Raw | ConvertFrom-Json
     $obj | Add-Member -NotePropertyName host -NotePropertyValue '0.0.0.0' -Force
     Write-Utf8NoBom -Path $tmp -Content ($obj | ConvertTo-Json -Depth 6)
     $cfgPath = $tmp
@@ -49,7 +49,7 @@ if (-not $NoWait) {
 }
 
 Write-Step "Starting the Realtime server  ($(Split-Path $cfgPath -Leaf))"
-New-Item -ItemType Directory -Force -Path $LogsDir | Out-Null
+[System.IO.Directory]::CreateDirectory($LogsDir) | Out-Null
 if ($LogFile) {
     Invoke-Native -FilePath $S2SExe -Arguments @('serve', $cfgPath) -LogFile (Join-Path $LogsDir 'server.log')
 } else {

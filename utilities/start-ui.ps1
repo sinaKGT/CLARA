@@ -39,7 +39,7 @@ $state = Get-KitState
 if (-not $state) { Write-Bad 'system.json missing - run the installer first.'; exit 1 }
 
 $uiDir = Join-Path $Kit 'ui'
-if (-not (Test-Path (Join-Path $uiDir 'index.html'))) { Write-Bad "ui\index.html missing"; exit 1 }
+if (-not (Test-Path -LiteralPath (Join-Path $uiDir 'index.html'))) { Write-Bad "ui\index.html missing"; exit 1 }
 
 $voicePort = [int]$state.voicePort
 $uiUrl     = "http://127.0.0.1:$Port/"
@@ -56,11 +56,11 @@ if ($Force) {
 # --- agent stack first: docker returns immediately, n8n boots while the voice
 # --- models load, so the wall-clock cost is close to zero.
 $compose = Join-Path $Kit 'n8n\docker-compose.yml'
-$stack = (Test-Path $compose) -and (Get-Command docker -ErrorAction SilentlyContinue)
+$stack = (Test-Path -LiteralPath $compose) -and (Get-Command docker -ErrorAction SilentlyContinue)
 if ($stack -and -not (Test-PortAnswers -Port (Get-ContainerPort -Container 'clara-n8n' -InternalPort 5678 -Fallback 5679))) {
     $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
     & docker compose -f $compose up -d 2>&1 |
-        Out-File -FilePath (Join-Path $LogsDir 'docker-up.log') -Encoding utf8
+        Out-File -LiteralPath (Join-Path $LogsDir 'docker-up.log') -Encoding utf8
     if ($LASTEXITCODE -ne 0) { Write-Warn2 'agent stack did not start (is Docker Desktop running?) - voice will still work' }
     $ErrorActionPreference = $prev
 }

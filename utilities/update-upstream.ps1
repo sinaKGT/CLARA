@@ -60,7 +60,7 @@ if (-not $GitExe) {
     Write-Info 'Install it from https://git-scm.com/downloads, or re-run the installer to fetch a fresh source archive.'
     exit 1
 }
-if (-not (Test-Path (Join-Path $RepoDir '.git'))) {
+if (-not (Test-Path -LiteralPath (Join-Path $RepoDir '.git'))) {
     Write-Bad 'repo\ is not a git checkout - it came from the zip fallback.'
     Write-Info 'Delete repo\ and re-run install.ps1 to get a git clone, then this script will work.'
     exit 1
@@ -94,7 +94,7 @@ function RepoGit {
 function Install-Deps {
     Write-Step 'Reinstalling dependencies'
     Write-Info 'The venv holds an editable install, so code is already live - this picks up pyproject.toml changes.'
-    Push-Location $RepoDir
+    Push-Location -LiteralPath $RepoDir
     try {
         & $UvExe pip install --python $VenvPython --prerelease allow -e .
         if ($LASTEXITCODE -ne 0) { throw 'dependency install failed' }
@@ -115,8 +115,8 @@ $currentCommit = (RepoGit rev-parse HEAD)
 
 # ---------------------------------------------------------------- rollback
 if ($Rollback) {
-    if (-not (Test-Path $backupFile)) { Write-Bad 'nothing to roll back to - this script has not changed anything yet.'; exit 1 }
-    $prev = Get-Content $backupFile -Raw | ConvertFrom-Json
+    if (-not (Test-Path -LiteralPath $backupFile)) { Write-Bad 'nothing to roll back to - this script has not changed anything yet.'; exit 1 }
+    $prev = Get-Content -LiteralPath $backupFile -Raw | ConvertFrom-Json
     Write-Step "Rolling back to $($prev.desc)"
     RepoGit fetch origin $prev.commit | Out-Null
     RepoGit checkout --force $prev.commit | Out-Null
@@ -133,7 +133,7 @@ Write-Step 'Fetching upstream releases'
 # Both "git describe" and the A..B commit preview need real history, so the
 # first run here deepens the checkout. Upstream is ~5 MB and about a second,
 # which is far cheaper than showing the wrong version.
-if (Test-Path (Join-Path $RepoDir '.git\shallow')) {
+if (Test-Path -LiteralPath (Join-Path $RepoDir '.git\shallow')) {
     Write-Info 'deepening the checkout (one-off, ~5 MB) so version comparison works'
     RepoGit fetch --unshallow --tags --force origin | Out-Null
 } else {

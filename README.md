@@ -49,6 +49,8 @@ Built on the [huggingface/speech-to-speech](https://github.com/huggingface/speec
 
 Docker and Ollama are what the agents actually run on, so both are needed. Everything else installs itself.
 
+> 📁 **Install it anywhere.** Spaces, brackets, apostrophes and non-ASCII characters in the folder name are all fine — `D:\2. CLARA`, `C:\Users\Me\My Projects\CLARA`, `D:\پروژه\CLARA`. `CLARA.cmd` → `3` proves it on your machine, or run `.\utilities\selftest.ps1` directly.
+
 ---
 
 ## ⚡ Install
@@ -97,7 +99,7 @@ Everything runs from **`CLARA.cmd`**:
 |:--:|:--|:--|
 | 1️⃣ | **start** | Interface, router, speech pipeline. Opens your browser. First start takes 60–90 s while models load — the bar says READY when it's done. |
 | 2️⃣ | **stop** | `1` everything · `2` voice only · `3` containers only |
-| 3️⃣ | **check** | Health check across files, GPU, Python, models, audio, ports. **Run this first when anything misbehaves.** |
+| 3️⃣ | **check** | Health check across files, GPU, Python, models, audio, ports and path handling. **Run this first when anything misbehaves.** |
 | 4️⃣ | **open n8n** | Opens the n8n editor |
 | 5️⃣ | **repair** | Reinstall any part. Safe to re-run. |
 | 6️⃣ | **logs** | Recent log files |

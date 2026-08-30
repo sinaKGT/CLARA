@@ -104,7 +104,7 @@ foreach ($step in $steps) {
     Write-Host ("  ===== [{0}/{1}] {2} =====" -f $n, $steps.Count, $step.Name) -ForegroundColor Cyan
     Write-Host ''
     $path = Join-Path $ScriptDir $step.Script
-    if (-not (Test-Path $path)) {
+    if (-not (Test-Path -LiteralPath $path)) {
         Write-Bad "missing $($step.Script)"
         $results += @{ Name=$step.Name; Ok=$false }
         continue

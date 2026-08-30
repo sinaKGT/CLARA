@@ -12,7 +12,7 @@ param([int]$Port = 8090)
 
 . "$PSScriptRoot\env.ps1"
 
-if (-not (Test-Path $VenvPython)) { Write-Bad 'venv missing - run the installer'; exit 1 }
+if (-not (Test-Path -LiteralPath $VenvPython)) { Write-Bad 'venv missing - run the installer'; exit 1 }
 if (Test-PortAnswers -Port $Port) { Write-Ok "router already on $Port"; exit 0 }
 
 $env:ROUTER_PORT = "$Port"

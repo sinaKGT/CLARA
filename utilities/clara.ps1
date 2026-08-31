@@ -12,6 +12,14 @@ function Run($script, $arguments = @()) {
     if (-not (Test-Path -LiteralPath $path)) { Write-Bad "missing utilities\$script"; return }
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $path @arguments
 }
+function Stop-Clara {
+    # Quitting the menu leaves the services running otherwise - they are
+    # background processes, not children of this window. stop-all.ps1 frees
+    # 8770/8765/8090/8080 and stops clara-n8n + clara-postgres by name.
+    Write-Host ''
+    Write-Host '  stopping services and freeing ports' -ForegroundColor White
+    Run 'stop-all.ps1'
+}
 function Pause2 { Write-Host ''; Write-Host '  enter to go back ' -ForegroundColor DarkGray -NoNewline; [void](Read-Host) }
 
 function N8nPort { Get-ContainerPort -Container 'clara-n8n' -InternalPort 5678 -Fallback 5679 }
@@ -24,7 +32,9 @@ function Row($label, $port, $url) {
     return $up
 }
 
-while ($true) {
+# Labelled: in PowerShell a bare `break` inside a switch exits the SWITCH,
+# not the loop around it - so 'q' redrew the menu forever instead of quitting.
+:mainmenu while ($true) {
     Clear-Host
     $n8n = N8nPort
     Write-Host ''
@@ -38,7 +48,7 @@ while ($true) {
     $null = Row 'ollama'   11434 '(desktop app)'
     $null = Row 'postgres' (Get-ContainerPort -Container 'clara-postgres' -InternalPort 5432  -Fallback 5433)  ''
     Write-Host ''
-    Write-Host '   1 start   2 stop   3 check   4 open n8n   5 repair   6 logs   7 version   q quit' -ForegroundColor Gray
+    Write-Host '   1 start   2 stop   3 check   4 open n8n   5 repair   6 logs   7 version   q quit + stop' -ForegroundColor Gray
     Write-Host ''
     switch (Read-Host '  ') {
         '1' { Run 'start-ui.ps1' @('-Force','-Detach'); Pause2 }
@@ -89,7 +99,7 @@ while ($true) {
             }
             Pause2
         }
-        'q' { break }
-        'Q' { break }
+        'q' { Stop-Clara; break mainmenu }
+        'Q' { Stop-Clara; break mainmenu }
     }
 }

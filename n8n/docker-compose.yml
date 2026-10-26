@@ -45,7 +45,9 @@ services:
     networks: [claranet]
 
   n8n:
-    image: docker.n8n.io/n8nio/n8n:next
+    # Stable channel. CLARA.cmd -> 8 pulls the newest release of this tag,
+    # backing up n8n\data first. Pin a version (n8n:2.44.6) to hold it back.
+    image: docker.n8n.io/n8nio/n8n:latest
     container_name: clara-n8n
     restart: unless-stopped
     ports:

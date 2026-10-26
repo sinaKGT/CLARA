@@ -92,7 +92,7 @@ powershell -ExecutionPolicy Bypass -File .\utilities\install-all.ps1 -Agents
 Everything runs from **`CLARA.cmd`**:
 
 ```
-1 start   2 stop   3 check   4 open n8n   5 repair   6 logs   7 version   q quit
+1 start   2 stop   3 check   4 open n8n   5 setup   6 logs   7 version   8 update n8n   q quit
 ```
 
 | | | |
@@ -101,9 +101,10 @@ Everything runs from **`CLARA.cmd`**:
 | 2️⃣ | **stop** | `1` everything · `2` voice only · `3` containers only |
 | 3️⃣ | **check** | Health check across files, GPU, Python, models, audio, ports and path handling. **Run this first when anything misbehaves.** |
 | 4️⃣ | **open n8n** | Opens the n8n editor |
-| 5️⃣ | **repair** | Reinstall any part. Safe to re-run. |
+| 5️⃣ | **setup** | Install or reinstall any part. Safe to re-run. |
 | 6️⃣ | **logs** | Recent log files |
 | 7️⃣ | **version** | `1` show · `2` update the speech pipeline · `3` undo |
+| 8️⃣ | **update n8n** | Newest stable n8n. Backs up workflows and credentials to `n8n\backups\` first. |
 
 ---
 

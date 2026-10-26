@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    The menu. Start, stop, check, repair - everything in one place.
+    The menu. Start, stop, check, set up, update - everything in one place.
 #>
 [CmdletBinding()]
 param()
@@ -48,7 +48,7 @@ function Row($label, $port, $url) {
     $null = Row 'ollama'   11434 '(desktop app)'
     $null = Row 'postgres' (Get-ContainerPort -Container 'clara-postgres' -InternalPort 5432  -Fallback 5433)  ''
     Write-Host ''
-    Write-Host '   1 start   2 stop   3 check   4 open n8n   5 repair   6 logs   7 version   q quit + stop' -ForegroundColor Gray
+    Write-Host '   1 start   2 stop   3 check   4 open n8n   5 setup   6 logs   7 version   8 update n8n   q quit + stop' -ForegroundColor Gray
     Write-Host ''
     switch (Read-Host '  ') {
         '1' { Run 'start-ui.ps1' @('-Force','-Detach'); Pause2 }
@@ -99,6 +99,7 @@ function Row($label, $port, $url) {
             }
             Pause2
         }
+        '8' { Run 'update-n8n.ps1'; Pause2 }
         'q' { Stop-Clara; break mainmenu }
         'Q' { Stop-Clara; break mainmenu }
     }
